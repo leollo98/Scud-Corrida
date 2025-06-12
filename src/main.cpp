@@ -1,5 +1,6 @@
 #include <Arduino.h>
-/////////////////////////////////////////////////////////////////////////////////////////////////////////// // Scuderia UFABC //
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+///// Scuderia UFABC //
 // Universidade Federal do ABC //
 // datalogger_rm03_v1 //
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -19,68 +20,75 @@
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
 #include <RTClib.h>
-#include <Wire.h>
-#include <SPI.h>
 #include <SD.h>
+#include <SPI.h>
+#include <Wire.h>
 
-#define chipSelectPin 5  // Pino do ESP32 conectado ao chip select (CS) do módulo do cartão SD
-#define presFreDiaPin 36 // Pino do potenciômetro da pressão de fluido de freio dianteiro
-#define presFreTraPin 39 // Pino do potenciômetro da pressão de fluido de freio traseiro
-#define interval 11       // Intervalo desejado entre leituras em milissegundos
+#define chipSelectPin                                                          \
+  5 // Pino do ESP32 conectado ao chip select (CS) do módulo do cartão SD
+#define presFreDiaPin                                                          \
+  36 // Pino do potenciômetro da pressão de fluido de freio dianteiro
+#define presFreTraPin                                                          \
+  39 // Pino do potenciômetro da pressão de fluido de freio traseiro
+#define interval 11 // Intervalo desejado entre leituras em milissegundos
 // #define dev
-//#define time
+// #define time
 
 Adafruit_MPU6050 mpu;
 RTC_DS3231 rtc;
 File dataFile;
-DateTime now; // Variável global para armazenar a data e hora
+DateTime now;
+TaskHandle_t Task1;
 
-/// Define variáveis globais para armazenar os dados do MPU6050
-float accel[3];
-float gyro[3];
-float tempC;
-uint32_t previousMillis = 0; // Variável para armazenar o tempo da última leitura
+struct dados {
+  /// Define variáveis globais para armazenar os dados do MPU6050
+  float accel[3];
+  float gyro[3];
+  float tempC;
+  /// Define variáveis globais para armazenar os dados da Susp
+  uint32_t presFreDia = 0;
+  uint32_t presFreTra = 0;
+  boolean novoDado = false;
+};
+dados dataFrame;
+dados dataFrame2Write;
 
-/// Define variáveis globais para armazenar os dados da Susp
-uint32_t presFreDia = 0;
-uint32_t presFreTra = 0;
+uint32_t previousMillis =
+    0; // Variável para armazenar o tempo da última leitura
 
-void init_componentes()
-{
-  if (!rtc.begin())
-  {
+void init_componentes() {
+  if (!rtc.begin()) {
 #ifdef dev
     Serial.println("Falha ao inicializar o RTC");
     // esp_restart();
 #endif
   }
-  if (!mpu.begin(0x69))
-  { // Endereço definido apenas com VCC no pino AD0 do MPU6050
+  if (!mpu.begin(
+          0x69)) { // Endereço definido apenas com VCC no pino AD0 do MPU6050
 #ifdef dev
     Serial.println("Falha ao inicializar o MPU6050.");
     // esp_restart();
 #endif
   }
-  if (!SD.begin(chipSelectPin))
-  {
+  if (!SD.begin(chipSelectPin)) {
     Serial.begin(115200);
-    for (uint16_t i = 0; i < 500; i++)
-    {
+    for (uint16_t i = 0; i < 500; i++) {
       Serial.println("Falha ao inicializar o cartão SD.");
     }
     esp_restart();
   }
 }
 
-void configMPU()
-{
-  mpu.setAccelerometerRange(MPU6050_RANGE_4_G); // Define a faixa de medição do acelerômetro
-  mpu.setGyroRange(MPU6050_RANGE_250_DEG);      // Define a faixa de medição do giroscópio
-  mpu.setFilterBandwidth(MPU6050_BAND_94_HZ);   // Define a largura de banda do filtro do sensor
+void configMPU() {
+  mpu.setAccelerometerRange(
+      MPU6050_RANGE_4_G); // Define a faixa de medição do acelerômetro
+  mpu.setGyroRange(
+      MPU6050_RANGE_250_DEG); // Define a faixa de medição do giroscópio
+  mpu.setFilterBandwidth(
+      MPU6050_BAND_94_HZ); // Define a largura de banda do filtro do sensor
 }
 
-String nomeArquivo()
-{
+String nomeArquivo() {
   // Criar uma string para armazenar o nome do arquivo
   String fileName = "/datalogger_";
   // Obter a data e hora atual do RTC
@@ -101,33 +109,28 @@ String nomeArquivo()
   return fileName;
 }
 
-void inicializaArquivo()
-{
+void inicializaArquivo() {
   dataFile = SD.open(nomeArquivo(), FILE_WRITE);
-  if (dataFile)
-  {
+  if (dataFile) {
 #ifdef dev
     Serial.println("Arquivo aberto. Salvando dados...");
 #endif
-  }
-  else
-  {
+  } else {
     Serial.begin(115200);
-    for (uint16_t i = 0; i < 500; i++)
-    {
+    for (uint16_t i = 0; i < 500; i++) {
       Serial.println("Erro ao abrir o arquivo.");
     }
     esp_restart();
   }
-  dataFile.print("tempo de execucao;aceleracao x;aceleracao y;aceleracao z;giroscopio x;giroscopio y;giroscopio z;temperatura mpu;pressao freio dianteiro;pressao freio traseiro");
+  dataFile.print("tempo de execucao,aceleracao x,aceleracao y,aceleracao "
+                 "z,giroscopio x,giroscopio y,giroscopio z,temperatura "
+                 "mpu,pressao freio dianteiro,pressao freio traseiro");
   dataFile.println();
   dataFile.flush();
 }
 
-void verificaRTC()
-{
-  if (rtc.lostPower())
-  {
+void verificaRTC() {
+  if (rtc.lostPower()) {
 #ifdef dev
     Serial.println("RTC perdeu energia. Defina a hora novamente.");
     rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
@@ -136,14 +139,13 @@ void verificaRTC()
   // Ajuste manual do horário do RTC DS3231
   // Para adiantar 1 minuto:
   // DateTime now = rtc.now();
-  // rtc.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(), now.minute() + 1, now.second()));
-  // Ou para atrasar 1 minuto:
-  // DateTime now = rtc.now();
-  // rtc.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(), now.minute() - 1, now.second()));
+  // rtc.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(),
+  // now.minute() + 1, now.second())); Ou para atrasar 1 minuto: DateTime now =
+  // rtc.now(); rtc.adjust(DateTime(now.year(), now.month(), now.day(),
+  // now.hour(), now.minute() - 1, now.second()));
 }
 
-void RTC()
-{
+void RTC() {
   // Atualiza a variável global 'now' com a data e hora atuais
   now = rtc.now();
   DateTime now = rtc.now();
@@ -164,18 +166,17 @@ void RTC()
 #endif
 }
 
-void MPU()
-{
+void MPU() {
   sensors_event_t accelerometer, gyroscope, temperature;
   mpu.getEvent(&accelerometer, &gyroscope, &temperature);
   // Armazenar os valores lidos nas variáveis globais
-  accel[0] = accelerometer.acceleration.x;
-  accel[1] = accelerometer.acceleration.y;
-  accel[2] = accelerometer.acceleration.z;
-  gyro[0] = gyroscope.gyro.x;
-  gyro[1] = gyroscope.gyro.y;
-  gyro[2] = gyroscope.gyro.z;
-  tempC = temperature.temperature;
+  dataFrame.accel[0] = accelerometer.acceleration.x;
+  dataFrame.accel[1] = accelerometer.acceleration.y;
+  dataFrame.accel[2] = accelerometer.acceleration.z;
+  dataFrame.gyro[0] = gyroscope.gyro.x;
+  dataFrame.gyro[1] = gyroscope.gyro.y;
+  dataFrame.gyro[2] = gyroscope.gyro.z;
+  dataFrame.tempC = temperature.temperature;
 #ifdef dev
   // Mostra valores de aceleração em m/s²
   Serial.print("acl:");
@@ -200,10 +201,13 @@ void MPU()
 #endif
 }
 
-void Freios()
-{
-  presFreDia = analogRead(presFreDiaPin); // Lê o valor do potenciômetro da pressão de fluido de freio dianteiro
-  presFreTra = analogRead(presFreTraPin); // Lê o valor do potenciômetro da pressão de fluido de freio traseiro
+void Freios() {
+  dataFrame.presFreDia =
+      analogRead(presFreDiaPin); // Lê o valor do potenciômetro da pressão de
+                                 // fluido de freio dianteiro
+  dataFrame.presFreTra =
+      analogRead(presFreTraPin); // Lê o valor do potenciômetro da pressão de
+                                 // fluido de freio traseiro
 #ifdef dev
   Serial.print("F:");
   Serial.print(presFreDia);
@@ -212,38 +216,35 @@ void Freios()
 #endif
 }
 
-void microSD()
-{
+void microSD() {
 #ifdef time
   Serial.print("   start: ");
   Serial.print(micros());
 #endif
   dataFile.print(millis());
-  dataFile.print(';');
+  dataFile.print(',');
 #ifdef time
   Serial.print("   2m: ");
   Serial.print(micros());
 #endif
-  for (uint8_t i = 0; i < 3; i++)
-  {
-    dataFile.print(accel[i]);
-    dataFile.print(';');
+  for (uint8_t i = 0; i < 3; i++) {
+    dataFile.print(dataFrame.accel[i]);
+    dataFile.print(',');
   }
-  for (uint8_t i = 0; i < 3; i++)
-  {
-    dataFile.print(gyro[i]);
-    dataFile.print(';');
+  for (uint8_t i = 0; i < 3; i++) {
+    dataFile.print(dataFrame.gyro[i]);
+    dataFile.print(',');
   }
 #ifdef time
   Serial.print("   for: ");
   Serial.print(micros());
 #endif
-  dataFile.print(tempC);
-  dataFile.print(';');
-  dataFile.print(presFreDia);
-  dataFile.print(';');
-  dataFile.print(presFreTra);
-  dataFile.print(';');
+  dataFile.print(dataFrame.tempC);
+  dataFile.print(',');
+  dataFile.print(dataFrame.presFreDia);
+  dataFile.print(',');
+  dataFile.print(dataFrame.presFreTra);
+  dataFile.print(',');
   dataFile.println();
 #ifdef time
   Serial.print("   resto: ");
@@ -256,9 +257,17 @@ void microSD()
 #endif
 }
 
-void setup()
-{
+void core2(void *parameter) {
+  while (true) {
+    while (dataFrame2Write.novoDado == false) {
+      NOP();
+    }
+    microSD();
+    dataFrame2Write.novoDado = false;
+  }
+}
 
+void setup() {
 #if defined(dev) || defined(time)
   Serial.begin(115200);
 #endif
@@ -266,16 +275,19 @@ void setup()
   configMPU();
   verificaRTC();
   inicializaArquivo();
+  xTaskCreatePinnedToCore(core2, "core2", 10000, NULL, 0, &Task1, 0);
 }
 
-void loop()
-{
+void loop() {
   unsigned long currentMillis = millis();
-  if (currentMillis - previousMillis >= interval)
-  {
+  if (currentMillis - previousMillis >= interval) {
     previousMillis = currentMillis;
     MPU();
     Freios();
-    microSD();
+    while (dataFrame2Write.novoDado == true) {
+      NOP();
+    }
+    dataFrame2Write = dataFrame;
+    dataFrame2Write.novoDado = true;
   }
 }

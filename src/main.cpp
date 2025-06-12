@@ -1,6 +1,6 @@
 #include <Arduino.h>
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
-///// Scuderia UFABC //
+// Scuderia UFABC //
 // Universidade Federal do ABC //
 // datalogger_rm03_v1 //
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -24,13 +24,10 @@
 #include <SPI.h>
 #include <Wire.h>
 
-#define chipSelectPin                                                          \
-  5 // Pino do ESP32 conectado ao chip select (CS) do módulo do cartão SD
-#define presFreDiaPin                                                          \
-  36 // Pino do potenciômetro da pressão de fluido de freio dianteiro
-#define presFreTraPin                                                          \
-  39 // Pino do potenciômetro da pressão de fluido de freio traseiro
-#define interval 11 // Intervalo desejado entre leituras em milissegundos
+#define chipSelectPin 5 // chip select (CS) do módulo do cartão SD
+#define presFreDiaPin 36
+#define presFreTraPin 39
+#define interval 5
 // #define dev
 // #define time
 
@@ -53,8 +50,7 @@ struct dados {
 dados dataFrame;
 dados dataFrame2Write;
 
-uint32_t previousMillis =
-    0; // Variável para armazenar o tempo da última leitura
+uint32_t previousMillis = 0;
 
 void init_componentes() {
   if (!rtc.begin()) {

@@ -20,35 +20,40 @@
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
 #include <RTClib.h>
-#include <SD.h>
 #include <SPI.h>
+#include <SdFat.h>
 #include <Wire.h>
 
 #define chipSelectPin 5 // chip select (CS) do módulo do cartão SD
-#define presFreDiaPin 36
-#define presFreTraPin 39
-#define interval 5
+#define pinPresFreio 34
 // #define dev
-// #define time
+#define pin
+//  1 for FAT16/FAT32, 2 for exFAT, 3 for FAT16/FAT32 and exFAT.
+#define SD_FAT_TYPE 1
 
 Adafruit_MPU6050 mpu;
 RTC_DS3231 rtc;
-File dataFile;
+SdFat sd;
+SdFile dataFile;
 DateTime now;
 TaskHandle_t Task1;
 
+// SD chip select pin.
+const uint8_t SD_CS_PIN = 5;
+
+// Use a large percent of sector size for best performance (512B -> 2K -> 4k).
+#define numeroDeLinhasParaGravar 24 // 2048 > dadosCSV * numeroDeLinhasParaGravar < 1024
+uint8_t microsdVezesParaEscrita = 0;
+std::string csv;
+
 struct dados {
-  /// Define variáveis globais para armazenar os dados do MPU6050
   float accel[3];
   float gyro[3];
   float tempC;
-  /// Define variáveis globais para armazenar os dados da Susp
-  uint32_t presFreDia = 0;
-  uint32_t presFreTra = 0;
+  uint32_t presFreio = 0;
   boolean novoDado = false;
 };
 dados dataFrame;
-dados dataFrame2Write;
 
 uint32_t previousMillis = 0;
 
@@ -59,29 +64,54 @@ void init_componentes() {
     // esp_restart();
 #endif
   }
-  if (!mpu.begin(
-          0x69)) { // Endereço definido apenas com VCC no pino AD0 do MPU6050
+  if (!mpu.begin(0x69)) {
 #ifdef dev
     Serial.println("Falha ao inicializar o MPU6050.");
     // esp_restart();
 #endif
   }
-  if (!SD.begin(chipSelectPin)) {
-    Serial.begin(115200);
-    for (uint16_t i = 0; i < 500; i++) {
-      Serial.println("Falha ao inicializar o cartão SD.");
-    }
-    esp_restart();
+  Serial.println("speed:");
+  if (sd.begin(SdSpiConfig(SD_CS_PIN, DEDICATED_SPI, SD_SCK_MHZ(20)))) {
+    Serial.print("20");
+    return;
   }
+  if (sd.begin(SdSpiConfig(SD_CS_PIN, DEDICATED_SPI, SD_SCK_MHZ(18)))) {
+    Serial.println("18");
+    return;
+  }
+  if (sd.begin(SdSpiConfig(SD_CS_PIN, DEDICATED_SPI, SD_SCK_MHZ(16)))) {
+    Serial.print("16");
+    return;
+  }
+  if (sd.begin(SdSpiConfig(SD_CS_PIN, DEDICATED_SPI, SD_SCK_MHZ(14)))) {
+    Serial.print("14");
+    return;
+  }
+  if (sd.begin(SdSpiConfig(SD_CS_PIN, DEDICATED_SPI, SD_SCK_MHZ(12)))) {
+    Serial.print("12");
+    return;
+  }
+  if (sd.begin(SdSpiConfig(SD_CS_PIN, DEDICATED_SPI, SD_SCK_MHZ(10)))) {
+    Serial.print("10");
+    return;
+  }
+  if (sd.begin(SdSpiConfig(SD_CS_PIN, DEDICATED_SPI, SD_SCK_MHZ(8)))) {
+    Serial.print("8");
+    return;
+  }
+  for (uint16_t i = 0; i < 500; i++) {
+    Serial.println("Falha ao inicializar o cartão SD.");
+  }
+  esp_restart();
 }
 
 void configMPU() {
   mpu.setAccelerometerRange(
       MPU6050_RANGE_4_G); // Define a faixa de medição do acelerômetro
   mpu.setGyroRange(
-      MPU6050_RANGE_250_DEG); // Define a faixa de medição do giroscópio
+      MPU6050_RANGE_500_DEG); // Define a faixa de medição do giroscópio
   mpu.setFilterBandwidth(
-      MPU6050_BAND_94_HZ); // Define a largura de banda do filtro do sensor
+      MPU6050_BAND_260_HZ); // Define a largura de banda do filtro do sensor
 }
 
 String nomeArquivo() {
@@ -105,22 +135,30 @@ String nomeArquivo() {
   return fileName;
 }
 
-void inicializaArquivo() {
-  dataFile = SD.open(nomeArquivo(), FILE_WRITE);
-  if (dataFile) {
+void abreArquivo() {
+  if (dataFile.isOpen()) {
+    dataFile.close();
+  }
+  if (dataFile.open(nomeArquivo().c_str(), O_RDWR | O_CREAT | O_AT_END)) {
 #ifdef dev
-    Serial.println("Arquivo aberto. Salvando dados...");
+    Serial.println("   -   Arquivo aberto. Salvando dados...");
 #endif
   } else {
     Serial.begin(115200);
     for (uint16_t i = 0; i < 500; i++) {
-      Serial.println("Erro ao abrir o arquivo.");
+      Serial.print("Erro ao abrir o arquivo: ");
+      Serial.println(nomeArquivo().c_str());
     }
     esp_restart();
   }
+}
+
+void inicializaArquivo() {
+
+  abreArquivo();
   dataFile.print("tempo de execucao,aceleracao x,aceleracao y,aceleracao "
                  "z,giroscopio x,giroscopio y,giroscopio z,temperatura "
-                 "mpu,pressao freio dianteiro,pressao freio traseiro");
+                 "mpu,pressao freio");
   dataFile.println();
   dataFile.flush();
 }
@@ -176,114 +214,101 @@ void MPU() {
 #ifdef dev
   // Mostra valores de aceleração em m/s²
   Serial.print("acl:");
-  Serial.print(accel[0]);
+  Serial.print(dataFrame.accel[0]);
   Serial.print(" ");
-  Serial.print(accel[1]);
+  Serial.print(dataFrame.accel[1]);
   Serial.print(" ");
-  Serial.print(accel[2]);
+  Serial.print(dataFrame.accel[2]);
   Serial.print(" ");
   // Mostra valores do giroscópio em rad/s
   Serial.print("g:");
-  Serial.print(gyro[0]);
+  Serial.print(dataFrame.gyro[0]);
   Serial.print(" ");
-  Serial.print(gyro[1]);
+  Serial.print(dataFrame.gyro[1]);
   Serial.print(" ");
-  Serial.print(gyro[2]);
+  Serial.print(dataFrame.gyro[2]);
   Serial.print(" ");
   // Mostra valor da temperatura da placa em degC
   Serial.print("T:");
-  Serial.print(tempC);
+  Serial.print(dataFrame.tempC);
   Serial.print(" ");
 #endif
 }
 
-void Freios() {
-  dataFrame.presFreDia =
-      analogRead(presFreDiaPin); // Lê o valor do potenciômetro da pressão de
-                                 // fluido de freio dianteiro
-  dataFrame.presFreTra =
-      analogRead(presFreTraPin); // Lê o valor do potenciômetro da pressão de
-                                 // fluido de freio traseiro
+void analog() {
+  dataFrame.presFreio = analogRead(pinPresFreio);
 #ifdef dev
   Serial.print("F:");
-  Serial.print(presFreDia);
-  Serial.print(" ");
-  Serial.println(presFreTra);
+  Serial.println(dataFrame.presFreio);
 #endif
 }
 
 void microSD() {
-#ifdef time
-  Serial.print("   start: ");
-  Serial.print(micros());
-#endif
-  dataFile.print(millis());
-  dataFile.print(',');
-#ifdef time
-  Serial.print("   2m: ");
-  Serial.print(micros());
-#endif
-  for (uint8_t i = 0; i < 3; i++) {
-    dataFile.print(dataFrame.accel[i]);
-    dataFile.print(',');
-  }
-  for (uint8_t i = 0; i < 3; i++) {
-    dataFile.print(dataFrame.gyro[i]);
-    dataFile.print(',');
-  }
-#ifdef time
-  Serial.print("   for: ");
-  Serial.print(micros());
-#endif
-  dataFile.print(dataFrame.tempC);
-  dataFile.print(',');
-  dataFile.print(dataFrame.presFreDia);
-  dataFile.print(',');
-  dataFile.print(dataFrame.presFreTra);
-  dataFile.print(',');
-  dataFile.println();
-#ifdef time
-  Serial.print("   resto: ");
-  Serial.print(micros());
-#endif
-  dataFile.flush();
-#ifdef time
-  Serial.print("   flush: ");
-  Serial.println(micros());
-#endif
+  csv += std::to_string(millis());            // 10 posições
+  csv += ",";                                 // 1 posições
+  csv += std::to_string(dataFrame.accel[0]);  // 5 posições
+  csv += ",";                                 // 1 posições
+  csv += std::to_string(dataFrame.accel[1]);  // 5 posições
+  csv += ",";                                 // 1 posições
+  csv += std::to_string(dataFrame.accel[2]);  // 5 posições
+  csv += ",";                                 // 1 posições
+  csv += std::to_string(dataFrame.gyro[0]);   // 5 posições
+  csv += ",";                                 // 1 posições
+  csv += std::to_string(dataFrame.gyro[1]);   // 5 posições
+  csv += ",";                                 // 1 posições
+  csv += std::to_string(dataFrame.gyro[2]);   // 5 posições
+  csv += ",";                                 // 1 posições
+  csv += std::to_string(dataFrame.tempC);     // 5 posições
+  csv += ",";                                 // 1 posições
+  csv += std::to_string(dataFrame.presFreio); // 5 posições
+  csv += "\n";                                // 2 posições
+  // total de 60 caracteres
+  microsdVezesParaEscrita = microsdVezesParaEscrita + 1;
 }
 
 void core2(void *parameter) {
   while (true) {
-    while (dataFrame2Write.novoDado == false) {
-      NOP();
+    std::string data;
+    if (microsdVezesParaEscrita >= numeroDeLinhasParaGravar) {
+	  digitalWrite(15, 1);
+      data = csv;
+      csv = "";
+      microsdVezesParaEscrita = 0;
+      dataFile.print(data.c_str());
+      dataFile.flush();
+	  digitalWrite(15, 0);
     }
-    microSD();
-    dataFrame2Write.novoDado = false;
+	if (dataFile.fileSize()>=2E9)
+	{
+		abreArquivo();
+	}
+	
   }
 }
 
 void setup() {
-#if defined(dev) || defined(time)
   Serial.begin(115200);
-#endif
   init_componentes();
   configMPU();
   verificaRTC();
   inicializaArquivo();
   xTaskCreatePinnedToCore(core2, "core2", 10000, NULL, 0, &Task1, 0);
+  Wire.setClock(1000000);
+#ifdef pin
+  pinMode(15, OUTPUT);
+  pinMode(25, OUTPUT);
+#endif
 }
 
 void loop() {
-  unsigned long currentMillis = millis();
-  if (currentMillis - previousMillis >= interval) {
-    previousMillis = currentMillis;
-    MPU();
-    Freios();
-    while (dataFrame2Write.novoDado == true) {
-      NOP();
-    }
-    dataFrame2Write = dataFrame;
-    dataFrame2Write.novoDado = true;
+  
+  digitalWrite(25, 1);
+  MPU();
+  analog();
+  digitalWrite(25, 0);
+  while (microsdVezesParaEscrita >= numeroDeLinhasParaGravar) {
+    NOP();
   }
+  microSD();
+  
 }

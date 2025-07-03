@@ -51,7 +51,8 @@ struct dados {
   float gyro[3];
   float tempC;
   uint32_t presFreio = 0;
-  boolean novoDado = false;
+  uint8_t pulsosRodaDireita = 0;
+  uint8_t pulsosRodaEsquerda = 0;
 };
 dados dataFrame;
 
@@ -158,7 +159,7 @@ void inicializaArquivo() {
   abreArquivo();
   dataFile.print("tempo de execucao,aceleracao x,aceleracao y,aceleracao "
                  "z,giroscopio x,giroscopio y,giroscopio z,temperatura "
-                 "mpu,pressao freio");
+                 "mpu,pressao freio,pulsos roda direita,pulsos roda esquerda");
   dataFile.println();
   dataFile.flush();
 }
@@ -262,8 +263,22 @@ void microSD() {
   csv += ",";                                 // 1 posições
   csv += std::to_string(dataFrame.presFreio); // 5 posições
   csv += "\n";                                // 2 posições
-  // total de 60 caracteres
+  csv += std::to_string(dataFrame.pulsosRodaDireita); // 2 posições
+  csv += "\n";                                // 2 posições
+  csv += std::to_string(dataFrame.pulsosRodaDireita); // 2 posições
+  csv += "\n";                                // 2 posições
+  // total de 64 caracteres
   microsdVezesParaEscrita = microsdVezesParaEscrita + 1;
+}
+
+
+void IRAM_ATTR pulsosRodaDireita()
+{
+  dataFrame.pulsosRodaDireita = dataFrame.pulsosRodaDireita + 1 ;
+}
+void IRAM_ATTR pulsosRodaEsquerda()
+{
+  dataFrame.pulsosRodaEsquerda = dataFrame.pulsosRodaEsquerda + 1 ;
 }
 
 void core2(void *parameter) {
@@ -294,6 +309,10 @@ void setup() {
   inicializaArquivo();
   xTaskCreatePinnedToCore(core2, "core2", 10000, NULL, 0, &Task1, 0);
   Wire.setClock(1000000);
+  pinMode(35,PULLDOWN);
+  pinMode(32,PULLDOWN);
+  attachInterrupt(35, pulsosRodaDireita, RISING);
+  attachInterrupt(32, pulsosRodaEsquerda, RISING);
 #ifdef pin
   pinMode(15, OUTPUT);
   pinMode(25, OUTPUT);

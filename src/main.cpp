@@ -42,8 +42,10 @@ TaskHandle_t Task1;
 const uint8_t SD_CS_PIN = 5;
 
 // Use a large percent of sector size for best performance (512B -> 2K -> 4k).
-#define numeroDeLinhasParaGravar 24 // 2048 > dadosCSV * numeroDeLinhasParaGravar < 1024
-uint8_t microsdVezesParaEscrita = 0;
+#define pageSize 1900 // 2048 com margem de segurança
+#define numberOfPages 2
+bool Copia = false;
+bool trava = false;
 std::string csv;
 
 struct dados {
@@ -62,15 +64,16 @@ void init_componentes() {
   if (!rtc.begin()) {
 #ifdef dev
     Serial.println("Falha ao inicializar o RTC");
-    // esp_restart();
+    esp_restart();
 #endif
   }
   if (!mpu.begin(0x69)) {
 #ifdef dev
     Serial.println("Falha ao inicializar o MPU6050.");
-    // esp_restart();
+    esp_restart();
 #endif
   }
+  //ESP_LOGD("microSD","speed:");
   Serial.println("speed:");
   if (sd.begin(SdSpiConfig(SD_CS_PIN, DEDICATED_SPI, SD_SCK_MHZ(20)))) {
     Serial.print("20");
@@ -113,6 +116,7 @@ void configMPU() {
       MPU6050_RANGE_500_DEG); // Define a faixa de medição do giroscópio
   mpu.setFilterBandwidth(
       MPU6050_BAND_260_HZ); // Define a largura de banda do filtro do sensor
+  Wire.setClock(1000000);
 }
 
 String nomeArquivo() {
@@ -245,60 +249,72 @@ void analog() {
 }
 
 void microSD() {
-  csv += std::to_string(millis());            // 10 posições
-  csv += ",";                                 // 1 posições
-  csv += std::to_string(dataFrame.accel[0]);  // 5 posições
-  csv += ",";                                 // 1 posições
-  csv += std::to_string(dataFrame.accel[1]);  // 5 posições
-  csv += ",";                                 // 1 posições
-  csv += std::to_string(dataFrame.accel[2]);  // 5 posições
-  csv += ",";                                 // 1 posições
-  csv += std::to_string(dataFrame.gyro[0]);   // 5 posições
-  csv += ",";                                 // 1 posições
-  csv += std::to_string(dataFrame.gyro[1]);   // 5 posições
-  csv += ",";                                 // 1 posições
-  csv += std::to_string(dataFrame.gyro[2]);   // 5 posições
-  csv += ",";                                 // 1 posições
-  csv += std::to_string(dataFrame.tempC);     // 5 posições
-  csv += ",";                                 // 1 posições
-  csv += std::to_string(dataFrame.presFreio); // 5 posições
-  csv += "\n";                                // 2 posições
+  trava = 1;
+  csv += std::to_string(millis());                    // 10 posições
+  csv += ",";                                         // 1 posições
+  csv += std::to_string(dataFrame.accel[0]);          // 5 posições
+  csv += ",";                                         // 1 posições
+  csv += std::to_string(dataFrame.accel[1]);          // 5 posições
+  csv += ",";                                         // 1 posições
+  csv += std::to_string(dataFrame.accel[2]);          // 5 posições
+  csv += ",";                                         // 1 posições
+  csv += std::to_string(dataFrame.gyro[0]);           // 5 posições
+  csv += ",";                                         // 1 posições
+  csv += std::to_string(dataFrame.gyro[1]);           // 5 posições
+  csv += ",";                                         // 1 posições
+  csv += std::to_string(dataFrame.gyro[2]);           // 5 posições
+  csv += ",";                                         // 1 posições
+  csv += std::to_string(dataFrame.tempC);             // 5 posições
+  csv += ",";                                         // 1 posições
+  csv += std::to_string(dataFrame.presFreio);         // 5 posições
+  csv += "\n";                                        // 2 posições
   csv += std::to_string(dataFrame.pulsosRodaDireita); // 2 posições
-  csv += "\n";                                // 2 posições
+  csv += "\n";                                        // 2 posições
   csv += std::to_string(dataFrame.pulsosRodaDireita); // 2 posições
-  csv += "\n";                                // 2 posições
+  csv += "\n";                                        // 2 posições
   // total de 64 caracteres
-  microsdVezesParaEscrita = microsdVezesParaEscrita + 1;
+  trava = 0;
 }
 
-
-void IRAM_ATTR pulsosRodaDireita()
-{
-  dataFrame.pulsosRodaDireita = dataFrame.pulsosRodaDireita + 1 ;
+void IRAM_ATTR pulsosRodaDireita() {
+  dataFrame.pulsosRodaDireita = dataFrame.pulsosRodaDireita + 1;
 }
-void IRAM_ATTR pulsosRodaEsquerda()
-{
-  dataFrame.pulsosRodaEsquerda = dataFrame.pulsosRodaEsquerda + 1 ;
+void IRAM_ATTR pulsosRodaEsquerda() {
+  dataFrame.pulsosRodaEsquerda = dataFrame.pulsosRodaEsquerda + 1;
 }
 
 void core2(void *parameter) {
   while (true) {
     std::string data;
-    if (microsdVezesParaEscrita >= numeroDeLinhasParaGravar) {
-	  digitalWrite(15, 1);
+    while (trava)
+    {
+      NOP();
+    }
+    if (csv.size() >= pageSize * numberOfPages) {
+      Copia = 1;
+      digitalWrite(15, 1);
       data = csv;
       csv = "";
-      microsdVezesParaEscrita = 0;
+      Copia = 0;
       dataFile.print(data.c_str());
       dataFile.flush();
-	  digitalWrite(15, 0);
+      digitalWrite(15, 0);
     }
-	if (dataFile.fileSize()>=2E9)
-	{
-		abreArquivo();
-	}
-	
+    if (dataFile.fileSize() >= 2E9) {
+      abreArquivo();
+    }
   }
+}
+
+void pinDef(){
+  pinMode(35, PULLDOWN);
+  pinMode(32, PULLDOWN);
+  attachInterrupt(35, pulsosRodaDireita, RISING);
+  attachInterrupt(32, pulsosRodaEsquerda, RISING);
+  #ifdef pin
+  pinMode(15, OUTPUT);
+  pinMode(25, OUTPUT);
+  #endif
 }
 
 void setup() {
@@ -308,26 +324,17 @@ void setup() {
   verificaRTC();
   inicializaArquivo();
   xTaskCreatePinnedToCore(core2, "core2", 10000, NULL, 0, &Task1, 0);
-  Wire.setClock(1000000);
-  pinMode(35,PULLDOWN);
-  pinMode(32,PULLDOWN);
-  attachInterrupt(35, pulsosRodaDireita, RISING);
-  attachInterrupt(32, pulsosRodaEsquerda, RISING);
-#ifdef pin
-  pinMode(15, OUTPUT);
-  pinMode(25, OUTPUT);
-#endif
+  pinDef();
 }
 
 void loop() {
-  
+
   digitalWrite(25, 1);
   MPU();
   analog();
   digitalWrite(25, 0);
-  while (microsdVezesParaEscrita >= numeroDeLinhasParaGravar) {
+  while (Copia) {
     NOP();
   }
   microSD();
-  
 }

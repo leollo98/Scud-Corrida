@@ -1,24 +1,6 @@
-#include <Arduino.h>
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Scuderia UFABC //
-// Universidade Federal do ABC //
-// datalogger_rm03_v1 //
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Hardware: Esp32-WROOM-DA Module;
-// Módulo MicroSD
-// MPU6050
-// DS3231
-// 5 x Potenciômetros lineares de 10k ohms
-// 2 x Potenciômetros lineares de 01k ohms
-// Software: Arduino IDE 2.2.2
-// Library: Adafruit BusIO 1.14.5
-// Adafruit MPU6050 2.2.6
-// Adafruit Unified Sensor 1.1.14
-// RTClib 2.1.3
-// Última atualização: 07 de janeiro de 2024 por Carlos Saravia
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
+#include <Arduino.h>
 #include <RTClib.h>
 #include <SPI.h>
 #include <SdFat.h>
@@ -42,7 +24,8 @@ TaskHandle_t Task1;
 const uint8_t SD_CS_PIN = 5;
 
 // Use a large percent of sector size for best performance (512B -> 2K -> 4k).
-#define numeroDeLinhasParaGravar 24 // 2048 > dadosCSV * numeroDeLinhasParaGravar < 1024
+#define numeroDeLinhasParaGravar                                               \
+  24 // 2048 > dadosCSV * numeroDeLinhasParaGravar < 1024
 uint8_t microsdVezesParaEscrita = 0;
 std::string csv;
 
@@ -270,19 +253,18 @@ void core2(void *parameter) {
   while (true) {
     std::string data;
     if (microsdVezesParaEscrita >= numeroDeLinhasParaGravar) {
-	  digitalWrite(15, 1);
+      Serial.println("gravando");
+      digitalWrite(15, 1);
       data = csv;
       csv = "";
       microsdVezesParaEscrita = 0;
       dataFile.print(data.c_str());
       dataFile.flush();
-	  digitalWrite(15, 0);
+      digitalWrite(15, 0);
     }
-	if (dataFile.fileSize()>=2E9)
-	{
-		abreArquivo();
-	}
-	
+    if (dataFile.fileSize() >= 2E9) {
+      abreArquivo();
+    }
   }
 }
 
@@ -293,7 +275,7 @@ void setup() {
   verificaRTC();
   inicializaArquivo();
   xTaskCreatePinnedToCore(core2, "core2", 10000, NULL, 0, &Task1, 0);
-  Wire.setClock(1000000);
+  //Wire.setClock(600000);
 #ifdef pin
   pinMode(15, OUTPUT);
   pinMode(25, OUTPUT);
@@ -301,7 +283,7 @@ void setup() {
 }
 
 void loop() {
-  
+
   digitalWrite(25, 1);
   MPU();
   analog();
@@ -310,5 +292,4 @@ void loop() {
     NOP();
   }
   microSD();
-  
 }

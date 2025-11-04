@@ -99,7 +99,6 @@ void configMPU() {
       MPU6050_RANGE_500_DEG); // Define a faixa de medição do giroscópio
   mpu.setFilterBandwidth(
       MPU6050_BAND_260_HZ); // Define a largura de banda do filtro do sensor
-  Wire.setClock(1000000);
 }
 
 String nomeArquivo() {

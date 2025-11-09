@@ -56,7 +56,7 @@ void init_componentes() {
     esp_restart();
 #endif
   }
-  //ESP_LOGD("microSD","speed:");
+  // ESP_LOGD("microSD","speed:");
   Serial.println("speed:");
   if (sd.begin(SdSpiConfig(SD_CS_PIN, DEDICATED_SPI, SD_SCK_MHZ(20)))) {
     Serial.print("20");
@@ -101,32 +101,40 @@ void configMPU() {
       MPU6050_BAND_260_HZ); // Define a largura de banda do filtro do sensor
 }
 
-String nomeArquivo() {
-  // Criar uma string para armazenar o nome do arquivo
-  String fileName = "/datalogger_";
-  // Obter a data e hora atual do RTC
-  DateTime now = rtc.now();
-  // Adicionar ano, mês, dia, hora, minuto e segundo ao nome do arquivo
-  fileName += String(now.year());
-  fileName += "_";
-  fileName += String(now.month());
-  fileName += "_";
-  fileName += String(now.day());
-  fileName += "_";
-  fileName += String(now.hour());
-  fileName += "_";
-  fileName += String(now.minute());
-  fileName += "_";
-  fileName += String(now.second());
-  fileName += ".csv";
-  return fileName;
+std::string getNextCsvFilename() {
+  SdFile dir;
+  dir.open("/", O_READ);
+  SdFile entry;
+  int maxNum = 0;
+  char name[32];
+
+  while (entry.openNext(&dir, O_READ)) {
+    if (entry.isDir()) {
+      entry.close();
+      continue;
+    }
+    entry.getName(name, sizeof(name));
+    std::string filename(name);
+    if (filename.size() > 4) {
+      if (filename.substr(filename.size() - 4) == ".csv" ||
+          filename.substr(filename.size() - 4) == ".CSV") {
+        std::string numPart = filename.substr(0, filename.find_last_of('.'));
+        int num = atoi(numPart.c_str());
+        if (num > maxNum)
+          maxNum = num;
+      }
+    }
+    entry.close();
+  }
+  dir.close();
+  return "/datalogger_" + std::to_string(maxNum + 1) + ".csv";
 }
 
 void abreArquivo() {
   if (dataFile.isOpen()) {
     dataFile.close();
   }
-  if (dataFile.open(nomeArquivo().c_str(), O_RDWR | O_CREAT | O_AT_END)) {
+  if (dataFile.open(getNextCsvFilename().c_str(), O_RDWR | O_CREAT | O_AT_END)) {
 #ifdef dev
     Serial.println("   -   Arquivo aberto. Salvando dados...");
 #endif
@@ -148,43 +156,6 @@ void inicializaArquivo() {
                  "mpu,pressao freio,pulsos roda direita,pulsos roda esquerda");
   dataFile.println();
   dataFile.flush();
-}
-
-void verificaRTC() {
-  if (rtc.lostPower()) {
-#ifdef dev
-    Serial.println("RTC perdeu energia. Defina a hora novamente.");
-    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
-#endif
-  }
-  // Ajuste manual do horário do RTC DS3231
-  // Para adiantar 1 minuto:
-  // DateTime now = rtc.now();
-  // rtc.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(),
-  // now.minute() + 1, now.second())); Ou para atrasar 1 minuto: DateTime now =
-  // rtc.now(); rtc.adjust(DateTime(now.year(), now.month(), now.day(),
-  // now.hour(), now.minute() - 1, now.second()));
-}
-
-void RTC() {
-  // Atualiza a variável global 'now' com a data e hora atuais
-  now = rtc.now();
-  DateTime now = rtc.now();
-#ifdef dev
-  Serial.print("RTC:");
-  Serial.print(now.year());
-  Serial.print(" ");
-  Serial.print(now.month());
-  Serial.print(" ");
-  Serial.print(now.day());
-  Serial.print(" ");
-  Serial.print(now.hour());
-  Serial.print(" ");
-  Serial.print(now.minute());
-  Serial.print(" ");
-  Serial.print(now.second());
-  Serial.print(" ");
-#endif
 }
 
 void MPU() {
@@ -232,29 +203,28 @@ void analog() {
 
 void microSD() {
   trava = 1;
-  csv += std::to_string(millis());                    // 10 posições
-  csv += ",";                                         // 1 posições
-  csv += std::to_string(dataFrame.accel[0]);          // 5 posições
-  csv += ",";                                         // 1 posições
-  csv += std::to_string(dataFrame.accel[1]);          // 5 posições
-  csv += ",";                                         // 1 posições
-  csv += std::to_string(dataFrame.accel[2]);          // 5 posições
-  csv += ",";                                         // 1 posições
-  csv += std::to_string(dataFrame.gyro[0]);           // 5 posições
-  csv += ",";                                         // 1 posições
-  csv += std::to_string(dataFrame.gyro[1]);           // 5 posições
-  csv += ",";                                         // 1 posições
-  csv += std::to_string(dataFrame.gyro[2]);           // 5 posições
-  csv += ",";                                         // 1 posições
-  csv += std::to_string(dataFrame.tempC);             // 5 posições
-  csv += ",";                                         // 1 posições
-  csv += std::to_string(dataFrame.presFreio);         // 5 posições
-  csv += "\n";                                        // 2 posições
-  csv += std::to_string(dataFrame.pulsosRodaDireita); // 2 posições
-  csv += "\n";                                        // 2 posições
-  csv += std::to_string(dataFrame.pulsosRodaDireita); // 2 posições
-  csv += "\n";                                        // 2 posições
-  // total de 64 caracteres
+  csv += std::to_string(millis());
+  csv += ",";
+  csv += std::to_string(dataFrame.accel[0]);
+  csv += ",";
+  csv += std::to_string(dataFrame.accel[1]);
+  csv += ",";
+  csv += std::to_string(dataFrame.accel[2]);
+  csv += ",";
+  csv += std::to_string(dataFrame.gyro[0]);
+  csv += ",";
+  csv += std::to_string(dataFrame.gyro[1]);
+  csv += ",";
+  csv += std::to_string(dataFrame.gyro[2]);
+  csv += ",";
+  csv += std::to_string(dataFrame.tempC);
+  csv += ",";
+  csv += std::to_string(dataFrame.presFreio);
+  csv += ",";
+  csv += std::to_string(dataFrame.pulsosRodaDireita);
+  csv += ",";
+  csv += std::to_string(dataFrame.pulsosRodaDireita);
+  csv += "\n";
   trava = 0;
 }
 
@@ -268,8 +238,7 @@ void IRAM_ATTR pulsosRodaEsquerda() {
 void core2(void *parameter) {
   while (true) {
     std::string data;
-    while (trava)
-    {
+    while (trava) {
       NOP();
     }
     if (csv.size() >= pageSize * numberOfPages) {
@@ -289,29 +258,28 @@ void core2(void *parameter) {
   }
 }
 
-void pinDef(){
+void pinDef() {
   pinMode(35, PULLDOWN);
   pinMode(32, PULLDOWN);
   attachInterrupt(35, pulsosRodaDireita, RISING);
   attachInterrupt(32, pulsosRodaEsquerda, RISING);
-  #ifdef pin
+#ifdef pin
   pinMode(15, OUTPUT);
   pinMode(25, OUTPUT);
-  #endif
+#endif
 }
 
 void setup() {
   Serial.begin(115200);
+  pinDef();
   init_componentes();
   configMPU();
   verificaRTC();
   inicializaArquivo();
   xTaskCreatePinnedToCore(core2, "core2", 10000, NULL, 0, &Task1, 0);
-  pinDef();
 }
 
 void loop() {
-
   digitalWrite(25, 1);
   MPU();
   analog();

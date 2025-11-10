@@ -28,19 +28,16 @@ struct Key {
   }
 };
 
-// Lista de MACs conhecidos pra identificar carro 1 e carro 2
-extern std::vector<std::string> macsConhecidos;
-
-// Armazena as partes recebidas
-extern std::map<Key, std::vector<std::string>> mensagensParciais;
-
 // Envia uma string fragmentada via ESP-NOW
 void enviarDadosFragmentado(const std::string& msg);
+void enviarDadosTruncado(const std::string& msg);
 
 // Callback para reconstrução da mensagem no receptor
 void onReceive(const uint8_t *mac, const uint8_t *incomingData, int len);
 
 void setupEspNowSend();
 void setupEspNowReceive();
+
+void onReceiveTrunca(const uint8_t *mac, const uint8_t *incomingData, int len);
 
 #endif  // ESPNOW_FRAGMENTADO_H

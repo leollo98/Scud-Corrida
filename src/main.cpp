@@ -21,7 +21,7 @@ void setup() {
 void loop() {
   // Chama o loop correto
   #ifdef MODO_DTL
-    setupDTL();
+    loopDTL();
   #else
     loopReceptor();
   #endif

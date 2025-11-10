@@ -1,5 +1,36 @@
 #include <dtl.h>
 
+Adafruit_MPU6050 mpu;
+SdFat sd;
+SdFile dataFile;
+TaskHandle_t Task1;
+
+// mutex
+portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
+
+
+// SD chip select pin.
+const uint8_t SD_CS_PIN = 5;
+
+
+bool Copia = false;
+bool trava = false;
+std::string csv = "";
+std::string dadosParaGravar = "";
+uint32_t linha = 0;
+
+struct dados {
+  float accel[3];
+  float gyro[3];
+  float tempC;
+  uint32_t presFreio = 0;
+  uint8_t pulsosRodaDireita = 0;
+  uint8_t pulsosRodaEsquerda = 0;
+};
+dados dataFrame;
+
+uint32_t previousMillis = 0;
+
 void init_componentes() {
   if (!mpu.begin(0x69)) {
 #ifdef dev
@@ -190,7 +221,7 @@ void microSD() {
   csv += ",";
   csv += std::to_string(dataFrame.pulsosRodaDireita);
   csv += ",";
-  csv += std::to_string(dataFrame.pulsosRodaDireita);
+  csv += std::to_string(dataFrame.pulsosRodaEsquerda);
   csv += "\n";
   portEXIT_CRITICAL(&mux);
 }
@@ -202,11 +233,11 @@ std::string getLineN(const std::string &dadosParaEnviar, int n) {
 
   while (*ptr) {
     if (*ptr == '\n') {
-      linha++;
       if (linha == n) {
         // Copia só o trecho da linha (sem '\n')
         return std::string(start, ptr - start);
       }
+      linha++;
       start = ptr + 1;
     }
     ptr++;
@@ -216,37 +247,35 @@ std::string getLineN(const std::string &dadosParaEnviar, int n) {
   return "";
 }
 
-void enviarDados(std::string envio){
-
-}
-
 void core2(void *parameter) {
   unsigned long ultimaTransmissao = 0;
   const unsigned long intervaloEnvio = 100; // 100 ms entre envios
 
   while (true) {
     if (csv.size() >= pageSize * numberOfPages) {
-      digitalWrite(15, 1);
       portENTER_CRITICAL(&mux);
       dadosParaGravar = csv;
       csv = "";
       portEXIT_CRITICAL(&mux);
       dataFile.print(dadosParaGravar.c_str());
       dataFile.flush();
-      digitalWrite(15, 0);
+      
       linha = 0;
       Serial.println("gravado");
     } 
     else {
       unsigned long agora = millis();
       if (agora - ultimaTransmissao >= intervaloEnvio) {
+        digitalWrite(15, 1);
         ultimaTransmissao = agora;
 
         std::string envio = getLineN(dadosParaGravar, linha);
         if (!envio.empty()) {
           linha += 25;
-          enviarDadosFragmentado(envio);
+          //enviarDadosFragmentado(envio);
+          enviarDadosTruncado(envio);
         }
+        digitalWrite(15, 0);
       }
     }
 
@@ -268,12 +297,13 @@ void setupPulseCounters() {
   pcnt_config.counter_h_lim = 32767;
   pcnt_config.counter_l_lim = 0;
 
-  pcnt_config_t pcnt_config_dir = pcnt_config_dir;
+  pcnt_config_t pcnt_config_dir = pcnt_config;
   pcnt_config_dir.pulse_gpio_num = 35;
   pcnt_config_dir.unit = PCNT_UNIT_DIREITA;
-  pcnt_unit_config(&pcnt_config_dir);
+  Serial.println(pcnt_unit_config(&pcnt_config_dir));
 
-  pcnt_config_t pcnt_config_esq = pcnt_config_dir;
+
+  pcnt_config_t pcnt_config_esq = pcnt_config;
   pcnt_config_esq.pulse_gpio_num = 32;
   pcnt_config_esq.unit = PCNT_UNIT_ESQUERDA;
   pcnt_unit_config(&pcnt_config_esq);

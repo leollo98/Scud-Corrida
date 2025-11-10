@@ -321,6 +321,20 @@ void setupPulseCounters() {
   pcnt_counter_resume(PCNT_UNIT_ESQUERDA);
 }
 
+void digital(){
+  int16_t countDir = 0;
+  int16_t countEsq = 0;
+
+  pcnt_get_counter_value(PCNT_UNIT_DIREITA, &countDir);
+  pcnt_counter_clear(PCNT_UNIT_DIREITA);
+
+  pcnt_get_counter_value(PCNT_UNIT_ESQUERDA, &countEsq);
+  pcnt_counter_clear(PCNT_UNIT_ESQUERDA);
+
+  dataFrame.pulsosRodaDireita = (uint8_t)countDir;
+  dataFrame.pulsosRodaEsquerda = (uint8_t)countEsq;
+}
+
 void setup() {
   Serial.begin(115200);
   pinDef();
@@ -333,5 +347,6 @@ void setup() {
 void loop() {
   MPU();
   analog();
+  digital();
   microSD();
 }

@@ -10,9 +10,6 @@
 #include <esp_now.h>
 #include <espnow_fragmentado.h>
 
-// REPLACE WITH THE RECEIVER'S MAC Address
-uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-
 #define chipSelectPin 5 // chip select (CS) do módulo do cartão SD
 #define pinPresFreio 34
 // #define dev
@@ -381,6 +378,7 @@ void setup() {
   init_componentes();
   configMPU();
   inicializaArquivo();
+  setupEspNowSend();
   xTaskCreatePinnedToCore(core2, "core2", 10000, NULL, 0, &Task1, 0);
 }
 

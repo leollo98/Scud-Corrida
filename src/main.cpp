@@ -1,3 +1,4 @@
+#include "driver/pcnt.h"
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
 #include <Arduino.h>
@@ -20,13 +21,20 @@ SdFile dataFile;
 DateTime now;
 TaskHandle_t Task1;
 
+// mutex
+portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
+
+// Contador de pulsos
+#define PCNT_UNIT_DIREITA PCNT_UNIT_0
+#define PCNT_UNIT_ESQUERDA PCNT_UNIT_1
+
 // SD chip select pin.
 const uint8_t SD_CS_PIN = 5;
 
 // Use a large percent of sector size for best performance (512B -> 2K -> 4k).
 
 #define pageSize 1900 // 2048 com margem de segurança
-#define numberOfPages 2
+#define numberOfPages 3
 bool Copia = false;
 bool trava = false;
 std::string csv;
@@ -101,40 +109,57 @@ void configMPU() {
       MPU6050_BAND_260_HZ); // Define a largura de banda do filtro do sensor
 }
 
-std::string getNextCsvFilename() {
+std::string getNextCsvFilename(const std::string &prefix = "datalogger_") {
   SdFile dir;
   dir.open("/", O_READ);
   SdFile entry;
   int maxNum = 0;
-  char name[32];
+  char name[64];
 
   while (entry.openNext(&dir, O_READ)) {
     if (entry.isDir()) {
       entry.close();
       continue;
     }
+
     entry.getName(name, sizeof(name));
     std::string filename(name);
-    if (filename.size() > 4) {
-      if (filename.substr(filename.size() - 4) == ".csv" ||
-          filename.substr(filename.size() - 4) == ".CSV") {
-        std::string numPart = filename.substr(0, filename.find_last_of('.'));
-        int num = atoi(numPart.c_str());
-        if (num > maxNum)
-          maxNum = num;
-      }
+
+    bool valid = true;
+
+    if (filename.size() <= prefix.size() + 4)
+      valid = false;
+
+    std::string ext = filename.substr(filename.size() - 4);
+    if (ext != ".csv" && ext != ".CSV")
+      valid = false;
+
+    if (filename.rfind(prefix, 0) != 0)
+      valid = false;
+
+    if (valid) {
+      size_t start = prefix.size();
+      size_t end = filename.find_last_of('.');
+      std::string numPart = filename.substr(start, end - start);
+
+      int num = atoi(numPart.c_str());
+      if (num > maxNum)
+        maxNum = num;
     }
+
     entry.close();
   }
+
   dir.close();
-  return "/datalogger_" + std::to_string(maxNum + 1) + ".csv";
+  return prefix + std::to_string(maxNum + 1) + ".csv";
 }
 
 void abreArquivo() {
   if (dataFile.isOpen()) {
     dataFile.close();
   }
-  if (dataFile.open(getNextCsvFilename().c_str(), O_RDWR | O_CREAT | O_AT_END)) {
+  if (dataFile.open(getNextCsvFilename().c_str(),
+                    O_RDWR | O_CREAT | O_AT_END)) {
 #ifdef dev
     Serial.println("   -   Arquivo aberto. Salvando dados...");
 #endif
@@ -142,7 +167,7 @@ void abreArquivo() {
     Serial.begin(115200);
     for (uint16_t i = 0; i < 500; i++) {
       Serial.print("Erro ao abrir o arquivo: ");
-      Serial.println(nomeArquivo().c_str());
+      Serial.println(getNextCsvFilename().c_str());
     }
     esp_restart();
   }
@@ -202,7 +227,7 @@ void analog() {
 }
 
 void microSD() {
-  trava = 1;
+  portENTER_CRITICAL(&mux);
   csv += std::to_string(millis());
   csv += ",";
   csv += std::to_string(dataFrame.accel[0]);
@@ -225,7 +250,7 @@ void microSD() {
   csv += ",";
   csv += std::to_string(dataFrame.pulsosRodaDireita);
   csv += "\n";
-  trava = 0;
+  portEXIT_CRITICAL(&mux);
 }
 
 void IRAM_ATTR pulsosRodaDireita() {
@@ -238,19 +263,18 @@ void IRAM_ATTR pulsosRodaEsquerda() {
 void core2(void *parameter) {
   while (true) {
     std::string data;
-    while (trava) {
-      NOP();
-    }
     if (csv.size() >= pageSize * numberOfPages) {
-      Copia = 1;
       digitalWrite(15, 1);
+      portENTER_CRITICAL(&mux);
       data = csv;
       csv = "";
-      Copia = 0;
+      portEXIT_CRITICAL(&mux);
       dataFile.print(data.c_str());
       dataFile.flush();
       digitalWrite(15, 0);
       Serial.println("gravado");
+    } else {
+      
     }
     if (dataFile.fileSize() >= 2E9) {
       abreArquivo();
@@ -259,14 +283,42 @@ void core2(void *parameter) {
 }
 
 void pinDef() {
-  pinMode(35, PULLDOWN);
-  pinMode(32, PULLDOWN);
-  attachInterrupt(35, pulsosRodaDireita, RISING);
-  attachInterrupt(32, pulsosRodaEsquerda, RISING);
+  setupPulseCounters();
 #ifdef pin
   pinMode(15, OUTPUT);
-  pinMode(25, OUTPUT);
+  pinMode(02, OUTPUT);
 #endif
+}
+
+void setupPulseCounters() {
+  pcnt_config_t pcnt_config;
+  pcnt_config.ctrl_gpio_num = PCNT_PIN_NOT_USED;
+  pcnt_config.channel = PCNT_CHANNEL_0;
+  pcnt_config.pos_mode = PCNT_COUNT_INC;
+  pcnt_config.neg_mode = PCNT_COUNT_DIS;
+  pcnt_config.lctrl_mode = PCNT_MODE_KEEP;
+  pcnt_config.hctrl_mode = PCNT_MODE_KEEP;
+  pcnt_config.counter_h_lim = 32767;
+  pcnt_config.counter_l_lim = 0;
+
+  pcnt_config_t pcnt_config_dir = pcnt_config_dir;
+  pcnt_config_dir.pulse_gpio_num = 35;
+  pcnt_config_dir.unit = PCNT_UNIT_DIREITA;
+  pcnt_unit_config(&pcnt_config_dir);
+
+  pcnt_config_t pcnt_config_esq = pcnt_config_dir;
+  pcnt_config_esq.pulse_gpio_num = 32;
+  pcnt_config_esq.unit = PCNT_UNIT_ESQUERDA;
+  pcnt_unit_config(&pcnt_config_esq);
+
+  // Habilita contadores
+  pcnt_counter_pause(PCNT_UNIT_DIREITA);
+  pcnt_counter_clear(PCNT_UNIT_DIREITA);
+  pcnt_counter_resume(PCNT_UNIT_DIREITA);
+
+  pcnt_counter_pause(PCNT_UNIT_ESQUERDA);
+  pcnt_counter_clear(PCNT_UNIT_ESQUERDA);
+  pcnt_counter_resume(PCNT_UNIT_ESQUERDA);
 }
 
 void setup() {
@@ -274,18 +326,12 @@ void setup() {
   pinDef();
   init_componentes();
   configMPU();
-  verificaRTC();
   inicializaArquivo();
   xTaskCreatePinnedToCore(core2, "core2", 10000, NULL, 0, &Task1, 0);
 }
 
 void loop() {
-  digitalWrite(25, 1);
   MPU();
   analog();
-  digitalWrite(25, 0);
-  while (Copia) {
-    NOP();
-  }
   microSD();
 }

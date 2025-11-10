@@ -12,11 +12,6 @@ void enviarDadosTruncado(const std::string& msg){
     esp_now_send(mac_receptor, reinterpret_cast<const uint8_t*>(msg.data()), msg.size());
 }
 
-void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-  Serial.print("\r\nLast Packet Send Status:\t");
-  Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
-}
-
 void receberDadosTruncado(const uint8_t * mac_addr, const uint8_t *incomingData, int len){
   char macStr[18];
   Serial.print("Packet received from: ");
@@ -56,7 +51,6 @@ void enviarDadosFragmentado(const std::string &msg) {
 }
 
 void onReceive(const uint8_t *mac, const uint8_t *incomingData, int len) {
-  Serial.println(".");
   if (len < 5)
     return; // precisa ter no mínimo cabeçalho
 
@@ -129,7 +123,6 @@ void setupEspNowSend() {
       Serial.println("Erro ao adicionar peer");
     }
   }
-  //esp_now_register_send_cb(OnDataSent);
 }
 
 void readMacAddr(){
@@ -152,9 +145,6 @@ void setupEspNowReceive() {
     esp_restart();
   }
 
-  esp_now_register_recv_cb(receberDadosTruncado);
+  esp_now_register_recv_cb(onReceive);
   Serial.println("Receptor pronto");
-
-  
-
 }

@@ -254,12 +254,14 @@ void core2(void *parameter) {
   while (true) {
     if (csv.size() >= pageSize * numberOfPages) {
       portENTER_CRITICAL(&mux);
+      digitalWrite(02, 1);
       dadosParaGravar = csv;
       csv = "";
       portEXIT_CRITICAL(&mux);
+      
       dataFile.print(dadosParaGravar.c_str());
       dataFile.flush();
-      
+      digitalWrite(02, 0);
       linha = 0;
       Serial.println("gravado");
     } 
@@ -272,8 +274,8 @@ void core2(void *parameter) {
         std::string envio = getLineN(dadosParaGravar, linha);
         if (!envio.empty()) {
           linha += 25;
-          //enviarDadosFragmentado(envio);
-          enviarDadosTruncado(envio);
+          enviarDadosFragmentado(envio);
+          //enviarDadosTruncado(envio);
         }
         digitalWrite(15, 0);
       }

@@ -5,7 +5,13 @@
 #include <RTClib.h>
 #include <SPI.h>
 #include <SdFat.h>
+#include <WiFi.h>
 #include <Wire.h>
+#include <esp_now.h>
+#include <espnow_fragmentado.h>
+
+// REPLACE WITH THE RECEIVER'S MAC Address
+uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 #define chipSelectPin 5 // chip select (CS) do módulo do cartão SD
 #define pinPresFreio 34
@@ -37,7 +43,9 @@ const uint8_t SD_CS_PIN = 5;
 #define numberOfPages 3
 bool Copia = false;
 bool trava = false;
-std::string csv;
+std::string csv = "";
+std::string dadosParaGravar = "";
+uint32_t linha = 0;
 
 struct dados {
   float accel[3];
@@ -253,29 +261,61 @@ void microSD() {
   portEXIT_CRITICAL(&mux);
 }
 
-void IRAM_ATTR pulsosRodaDireita() {
-  dataFrame.pulsosRodaDireita = dataFrame.pulsosRodaDireita + 1;
+std::string getLineN(const std::string &dadosParaEnviar, int n) {
+  const char *ptr = dadosParaEnviar.c_str();
+  const char *start = ptr;
+  int linha = 0;
+
+  while (*ptr) {
+    if (*ptr == '\n') {
+      linha++;
+      if (linha == n) {
+        // Copia só o trecho da linha (sem '\n')
+        return std::string(start, ptr - start);
+      }
+      start = ptr + 1;
+    }
+    ptr++;
+  }
+
+  // Se chegou aqui, o arquivo acabou antes da linha n
+  return "";
 }
-void IRAM_ATTR pulsosRodaEsquerda() {
-  dataFrame.pulsosRodaEsquerda = dataFrame.pulsosRodaEsquerda + 1;
+
+void enviarDados(std::string envio){
+
 }
 
 void core2(void *parameter) {
+  unsigned long ultimaTransmissao = 0;
+  const unsigned long intervaloEnvio = 100; // 100 ms entre envios
+
   while (true) {
-    std::string data;
     if (csv.size() >= pageSize * numberOfPages) {
       digitalWrite(15, 1);
       portENTER_CRITICAL(&mux);
-      data = csv;
+      dadosParaGravar = csv;
       csv = "";
       portEXIT_CRITICAL(&mux);
-      dataFile.print(data.c_str());
+      dataFile.print(dadosParaGravar.c_str());
       dataFile.flush();
       digitalWrite(15, 0);
+      linha = 0;
       Serial.println("gravado");
-    } else {
-      
+    } 
+    else {
+      unsigned long agora = millis();
+      if (agora - ultimaTransmissao >= intervaloEnvio) {
+        ultimaTransmissao = agora;
+
+        std::string envio = getLineN(dadosParaGravar, linha);
+        if (!envio.empty()) {
+          linha += 25;
+          enviarDadosFragmentado(envio);
+        }
+      }
     }
+
     if (dataFile.fileSize() >= 2E9) {
       abreArquivo();
     }
@@ -321,7 +361,7 @@ void setupPulseCounters() {
   pcnt_counter_resume(PCNT_UNIT_ESQUERDA);
 }
 
-void digital(){
+void digital() {
   int16_t countDir = 0;
   int16_t countEsq = 0;
 

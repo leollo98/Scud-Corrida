@@ -319,13 +319,6 @@ void core2(void *parameter) {
   }
 }
 
-void pinDef() {
-  setupPulseCounters();
-#ifdef pin
-  pinMode(15, OUTPUT);
-  pinMode(02, OUTPUT);
-#endif
-}
 
 void setupPulseCounters() {
   pcnt_config_t pcnt_config;
@@ -357,6 +350,15 @@ void setupPulseCounters() {
   pcnt_counter_clear(PCNT_UNIT_ESQUERDA);
   pcnt_counter_resume(PCNT_UNIT_ESQUERDA);
 }
+
+void pinDef() {
+  setupPulseCounters();
+#ifdef pin
+  pinMode(15, OUTPUT);
+  pinMode(02, OUTPUT);
+#endif
+}
+
 
 void digital() {
   int16_t countDir = 0;

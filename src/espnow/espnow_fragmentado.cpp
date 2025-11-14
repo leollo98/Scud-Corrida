@@ -1,27 +1,26 @@
 #include "espnow_fragmentado.h"
 
-
 // Lista de MACs conhecidos pra identificar carro 1 e carro 2
 std::vector<std::string> macsConhecidos;
 // Armazena as partes recebidas
 std::map<Key, std::vector<std::string>> mensagensParciais;
 uint8_t mac_receptor[6] = {0x0c, 0xb8, 0x15, 0xd7, 0x85, 0x80};
 
-
-void enviarDadosTruncado(const std::string& msg){
-    esp_now_send(mac_receptor, reinterpret_cast<const uint8_t*>(msg.data()), msg.size());
+void readMacAddr(){
+  uint8_t baseMac[6];
+  esp_err_t ret = esp_wifi_get_mac(WIFI_IF_STA, baseMac);
+  if (ret == ESP_OK) {
+    Serial.printf("%02x:%02x:%02x:%02x:%02x:%02x\n",
+                  baseMac[0], baseMac[1], baseMac[2],
+                  baseMac[3], baseMac[4], baseMac[5]);
+  } else {
+    Serial.println("Failed to read MAC address");
+  }
 }
 
-void receberDadosTruncado(const uint8_t * mac_addr, const uint8_t *incomingData, int len){
-  char macStr[18];
-  Serial.print("Packet received from: ");
-  snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
-           mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
-  Serial.println(macStr);
-  std::string msg(reinterpret_cast<const char*>(incomingData), len);
-  Serial.println(msg.c_str());
-}
+#ifdef MODO_DTL
 
+#include "../dtl/dtl.h"
 
 void enviarDadosFragmentado(const std::string &msg) {
   static uint16_t msg_id = 0; // contador pra identificar mensagens únicas
@@ -49,6 +48,31 @@ void enviarDadosFragmentado(const std::string &msg) {
     }
   }
 }
+
+void setupEspNowSend() {
+  WiFi.mode(WIFI_STA);
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("Erro ao inicializar ESP-NOW");
+    return;
+  }
+  
+
+  esp_now_peer_info_t peer{};
+  memcpy(peer.peer_addr, mac_receptor, 6);
+  peer.channel = 0;
+  peer.encrypt = false;
+
+  if (!esp_now_is_peer_exist(peer.peer_addr)) {
+    if (esp_now_add_peer(&peer) != ESP_OK) {
+      Serial.println("Erro ao adicionar peer");
+    }
+  }
+}
+
+
+#else
+
+#include "../receptor/receptor.h"
 
 void onReceive(const uint8_t *mac, const uint8_t *incomingData, int len) {
   if (len < 5)
@@ -101,39 +125,9 @@ void onReceive(const uint8_t *mac, const uint8_t *incomingData, int len) {
 
     Serial.printf("%d - %s\n", numeroCarro, mensagem.c_str());
 
+    std::string mensagemFinal = std::to_string(numeroCarro) + " - " + mensagem;
+
     mensagensParciais.erase(key); // limpa memória
-  }
-}
-
-void setupEspNowSend() {
-  WiFi.mode(WIFI_STA);
-  if (esp_now_init() != ESP_OK) {
-    Serial.println("Erro ao inicializar ESP-NOW");
-    return;
-  }
-  
-
-  esp_now_peer_info_t peer{};
-  memcpy(peer.peer_addr, mac_receptor, 6);
-  peer.channel = 0;
-  peer.encrypt = false;
-
-  if (!esp_now_is_peer_exist(peer.peer_addr)) {
-    if (esp_now_add_peer(&peer) != ESP_OK) {
-      Serial.println("Erro ao adicionar peer");
-    }
-  }
-}
-
-void readMacAddr(){
-  uint8_t baseMac[6];
-  esp_err_t ret = esp_wifi_get_mac(WIFI_IF_STA, baseMac);
-  if (ret == ESP_OK) {
-    Serial.printf("%02x:%02x:%02x:%02x:%02x:%02x\n",
-                  baseMac[0], baseMac[1], baseMac[2],
-                  baseMac[3], baseMac[4], baseMac[5]);
-  } else {
-    Serial.println("Failed to read MAC address");
   }
 }
 
@@ -148,3 +142,5 @@ void setupEspNowReceive() {
   esp_now_register_recv_cb(onReceive);
   Serial.println("Receptor pronto");
 }
+
+#endif

@@ -1,13 +1,4 @@
-#include <Arduino.h>
-
-// Inclui os arquivos .h baseado na flag
-#ifdef MODO_DTL
-  #include "dtl.h"
-#elif defined(MODO_RECEPTOR)
-  #include "receptor.h"
-#else
-  #error "Nenhum modo definido! Defina no platformio.ini"
-#endif
+#include "main.h"
 
 void setup() {
   // Chama o setup correto

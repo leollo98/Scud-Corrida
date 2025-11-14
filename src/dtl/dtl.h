@@ -10,7 +10,7 @@
 #include <WiFi.h>
 #include <Wire.h>
 #include <esp_now.h>
-#include <espnow_fragmentado.h>
+
 
 #define chipSelectPin 5 // chip select (CS) do módulo do cartão SD
 #define pinPresFreio 34

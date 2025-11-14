@@ -2,7 +2,10 @@
 #define RECEPTOR_H
 
 #include <Arduino.h>
-#include <espnow_fragmentado.h>
+#include <WiFi.h>
+#include <esp_now.h>
+#include <AsyncTCP.h>
+#include <ESPAsyncWebServer.h>
 
 
 void setupReceptor();

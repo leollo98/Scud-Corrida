@@ -4,7 +4,7 @@
 std::vector<std::string> macsConhecidos;
 // Armazena as partes recebidas
 std::map<Key, std::vector<std::string>> mensagensParciais;
-uint8_t mac_receptor[6] = {0x0c, 0xb8, 0x15, 0xd7, 0x85, 0x80};
+uint8_t mac_receptor[6] = {0x0C, 0xB8, 0x15, 0x69, 0x69, 0x69};
 
 void readMacAddr(){
   uint8_t baseMac[6];
@@ -133,6 +133,9 @@ void onReceive(const uint8_t *mac, const uint8_t *incomingData, int len) {
 
 void setupEspNowReceive() {
   WiFi.mode(WIFI_STA);
+  readMacAddr();
+  esp_err_t err;
+  Serial.println(esp_wifi_set_mac(WIFI_IF_STA, &mac_receptor[0]));
   readMacAddr();
   if (esp_now_init() != ESP_OK) {
     Serial.println("Erro ao iniciar ESP-NOW");

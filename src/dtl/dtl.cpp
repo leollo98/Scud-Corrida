@@ -6,13 +6,15 @@ SdFat sd;
 SdFile dataFile;
 TaskHandle_t Task1;
 
+// file Server
+DNSServer dnsServer;
+AsyncWebServer server(80);
+
 // mutex
 portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 
-
 // SD chip select pin.
 const uint8_t SD_CS_PIN = 5;
-
 
 bool Copia = false;
 bool trava = false;
@@ -259,14 +261,13 @@ void core2(void *parameter) {
       dadosParaGravar = csv;
       csv = "";
       portEXIT_CRITICAL(&mux);
-      
+
       dataFile.print(dadosParaGravar.c_str());
       dataFile.flush();
       digitalWrite(02, 0);
       linha = 0;
       Serial.println("gravado");
-    } 
-    else {
+    } else {
       unsigned long agora = millis();
       if (agora - ultimaTransmissao >= intervaloEnvio) {
         digitalWrite(15, 1);
@@ -276,7 +277,7 @@ void core2(void *parameter) {
         if (!envio.empty()) {
           linha += 25;
           enviarDadosFragmentado(envio);
-          //enviarDadosTruncado(envio);
+          // enviarDadosTruncado(envio);
         }
         digitalWrite(15, 0);
       }
@@ -287,7 +288,6 @@ void core2(void *parameter) {
     }
   }
 }
-
 
 void setupPulseCounters() {
   pcnt_config_t pcnt_config;
@@ -304,7 +304,6 @@ void setupPulseCounters() {
   pcnt_config_dir.pulse_gpio_num = 35;
   pcnt_config_dir.unit = PCNT_UNIT_DIREITA;
   Serial.println(pcnt_unit_config(&pcnt_config_dir));
-
 
   pcnt_config_t pcnt_config_esq = pcnt_config;
   pcnt_config_esq.pulse_gpio_num = 32;
@@ -323,12 +322,34 @@ void setupPulseCounters() {
 
 void pinDef() {
   setupPulseCounters();
+  pinMode(4, INPUT_PULLUP);
 #ifdef pin
   pinMode(15, OUTPUT);
   pinMode(02, OUTPUT);
 #endif
 }
 
+void serverSetup() {
+  WiFi.mode(WIFI_AP);
+  uint8_t baseMac[6];
+  esp_wifi_get_mac(WIFI_IF_STA, baseMac);
+  Serial.println(baseMac[5]);
+  String APname = "DataLogger - " + String(baseMac[5]);
+  Serial.println(APname);
+  const char *AP_NAME = APname.c_str();
+
+  
+
+  WiFi.softAP(AP_NAME, NULL);
+
+  dnsServer.start(53, "*", WiFi.softAPIP());
+
+  setupWebServer(server);
+
+  server.begin();
+}
+
+void ServerLoop() { dnsServer.processNextRequest(); }
 
 void digital() {
   int16_t countDir = 0;
@@ -344,14 +365,23 @@ void digital() {
   dataFrame.pulsosRodaEsquerda = (uint8_t)countEsq;
 }
 
+void IRAM_ATTR fileServer() { esp_restart(); }
+
 void setupDTL() {
   Serial.begin(115200);
   pinDef();
+  if (!digitalRead(4)) {
+    serverSetup();
+    while (true) {
+      ServerLoop();
+    }
+  }
   init_componentes();
   configMPU();
   inicializaArquivo();
   setupEspNowSend();
   xTaskCreatePinnedToCore(core2, "core2", 10000, NULL, 0, &Task1, 0);
+  attachInterrupt(4, fileServer, FALLING);
 }
 
 void loopDTL() {

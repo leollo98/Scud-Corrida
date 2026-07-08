@@ -10,6 +10,10 @@
 #include <WiFi.h>
 #include <Wire.h>
 #include <esp_now.h>
+#include <WiFi.h>
+#include <ESPAsyncWebServer.h>
+#include <DNSServer.h>
+#include "../HTML/dtl_server.h"
 
 
 #define chipSelectPin 5 // chip select (CS) do módulo do cartão SD

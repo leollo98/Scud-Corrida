@@ -5,6 +5,7 @@ Adafruit_MPU6050 mpu;
 SdFat sd;
 SdFile dataFile;
 TaskHandle_t Task1;
+Preferences prefs;
 
 // file Server
 DNSServer dnsServer;
@@ -338,9 +339,7 @@ void serverSetup() {
   Serial.println(APname);
   const char *AP_NAME = APname.c_str();
 
-  
-
-  WiFi.softAP(AP_NAME, NULL);
+  WiFi.softAP(AP_NAME, NULL, 6);
 
   dnsServer.start(53, "*", WiFi.softAPIP());
 
@@ -365,17 +364,37 @@ void digital() {
   dataFrame.pulsosRodaEsquerda = (uint8_t)countEsq;
 }
 
-void IRAM_ATTR fileServer() { esp_restart(); }
+volatile bool reiniciar = false;
+
+void IRAM_ATTR fileServer() { reiniciar = true; }
+
+void readData() {
+  prefs.begin("boot", false);
+  if (!digitalRead(4) or prefs.getBool("read_data", false)) {
+    Serial.println("Servidor de arquivos aberto");
+    setupComandos();
+    enviarComando("CMD:READ_DATA");
+    prefs.putBool("read_data", false);
+    prefs.end();
+    serverSetup();
+    while (true) {
+      ServerLoop();
+      if (!digitalRead(4)) {
+        enviarComando("CMD:READ_DATA");
+        delay(300);
+      }
+      delay(10);
+    }
+  }
+  prefs.end();
+}
 
 void setupDTL() {
   Serial.begin(115200);
   pinDef();
-  if (!digitalRead(4)) {
-    serverSetup();
-    while (true) {
-      ServerLoop();
-    }
-  }
+  readData();
+
+  
   init_componentes();
   configMPU();
   inicializaArquivo();
@@ -389,4 +408,8 @@ void loopDTL() {
   analog();
   digital();
   microSD();
+  if (reiniciar) {
+    reiniciar = false;
+    ESP.restart();
+  }
 }

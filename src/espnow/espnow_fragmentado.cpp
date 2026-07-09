@@ -5,14 +5,14 @@ std::vector<std::string> macsConhecidos;
 // Armazena as partes recebidas
 std::map<Key, std::vector<std::string>> mensagensParciais;
 uint8_t mac_receptor[6] = {0x0C, 0xB8, 0x15, 0x69, 0x69, 0x69};
+uint8_t mac_broadcast[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
-void readMacAddr(){
+void readMacAddr() {
   uint8_t baseMac[6];
   esp_err_t ret = esp_wifi_get_mac(WIFI_IF_STA, baseMac);
   if (ret == ESP_OK) {
-    Serial.printf("%02x:%02x:%02x:%02x:%02x:%02x\n",
-                  baseMac[0], baseMac[1], baseMac[2],
-                  baseMac[3], baseMac[4], baseMac[5]);
+    Serial.printf("%02x:%02x:%02x:%02x:%02x:%02x\n", baseMac[0], baseMac[1],
+                  baseMac[2], baseMac[3], baseMac[4], baseMac[5]);
   } else {
     Serial.println("Failed to read MAC address");
   }
@@ -21,6 +21,72 @@ void readMacAddr(){
 #ifdef MODO_DTL
 
 #include "../dtl/dtl.h"
+
+Preferences pref;
+
+void processarComando(const std::string &comando) {
+  Serial.printf("Comando recebido: %s\n", comando.c_str());
+
+  if (comando == "CMD:READ_DATA") {
+    pref.begin("boot", false);
+    pref.putBool("read_data", true);
+    pref.end();
+
+    Serial.println("Flag gravada. Reiniciando...");
+
+    esp_restart();
+  } else {
+    Serial.println("Comando desconhecido.");
+  }
+}
+
+void addPear(uint8_t mac[]) {
+  esp_now_peer_info_t peer{};
+  memcpy(peer.peer_addr, mac, 6);
+  peer.channel = 0;
+  peer.encrypt = false;
+  peer.ifidx = WIFI_IF_AP;
+  Serial.printf("%02x:%02x:%02x:%02x:%02x:%02x\n", mac[0], mac[1], mac[2],
+                mac[3], mac[4], mac[5]);
+  if (!esp_now_is_peer_exist(peer.peer_addr)) {
+    if (esp_now_add_peer(&peer) != ESP_OK) {
+      Serial.println("Erro ao adicionar peer");
+    }
+  }
+}
+
+void setupComandos() {
+  WiFi.mode(WIFI_AP);
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("Erro ao inicializar ESP-NOW");
+    return;
+  }
+  addPear(mac_broadcast);
+}
+
+void enviarComando(const char *comando) {
+  esp_err_t result = esp_now_send(mac_broadcast, // broadcast
+                                  (uint8_t *)comando, strlen(comando) + 1);
+
+  if (result != ESP_OK) {
+    Serial.printf("Erro ao enviar comando (%d)\n", result);
+  }
+}
+
+void onReceiveComando(const esp_now_recv_info_t *info,
+                      const uint8_t *incomingData, int len) {
+  if (len <= 0)
+    return;
+
+  std::string comando((char *)incomingData, len);
+
+  // Remove '\0' caso exista
+  if (!comando.empty() && comando.back() == '\0')
+    comando.pop_back();
+
+  Serial.printf("Comando recebido: %s\n", comando.c_str());
+  processarComando(comando);
+}
 
 void enviarDadosFragmentado(const std::string &msg) {
   static uint16_t msg_id = 0; // contador pra identificar mensagens únicas
@@ -50,25 +116,14 @@ void enviarDadosFragmentado(const std::string &msg) {
 }
 
 void setupEspNowSend() {
-  WiFi.mode(WIFI_STA);
+  WiFi.mode(WIFI_AP);
   if (esp_now_init() != ESP_OK) {
     Serial.println("Erro ao inicializar ESP-NOW");
     return;
   }
-  
-
-  esp_now_peer_info_t peer{};
-  memcpy(peer.peer_addr, mac_receptor, 6);
-  peer.channel = 0;
-  peer.encrypt = false;
-
-  if (!esp_now_is_peer_exist(peer.peer_addr)) {
-    if (esp_now_add_peer(&peer) != ESP_OK) {
-      Serial.println("Erro ao adicionar peer");
-    }
-  }
+  addPear(mac_receptor);
+  esp_now_register_recv_cb(onReceiveComando);
 }
-
 
 #else
 

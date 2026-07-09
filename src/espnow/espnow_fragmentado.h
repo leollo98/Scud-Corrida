@@ -30,14 +30,13 @@ struct Key {
 
 // Envia uma string fragmentada via ESP-NOW
 void enviarDadosFragmentado(const std::string& msg);
-void enviarDadosTruncado(const std::string& msg);
+void enviarComando(const char *comando);
 
 // Callback para reconstrução da mensagem no receptor
 void onReceive(const uint8_t *mac, const uint8_t *incomingData, int len);
 
 void setupEspNowSend();
 void setupEspNowReceive();
-
-void onReceiveTrunca(const uint8_t *mac, const uint8_t *incomingData, int len);
+void setupComandos();
 
 #endif  // ESPNOW_FRAGMENTADO_H

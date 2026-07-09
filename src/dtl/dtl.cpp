@@ -17,8 +17,7 @@ portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 // SD chip select pin.
 const uint8_t SD_CS_PIN = 5;
 
-bool Copia = false;
-bool trava = false;
+volatile bool reiniciar = false;
 std::string csv = "";
 std::string dadosParaGravar = "";
 uint32_t linha = 0;
@@ -86,7 +85,8 @@ void configMPU() {
       MPU6050_BAND_260_HZ); // Define a largura de banda do filtro do sensor
 }
 
-std::string getNextCsvFilename(const std::string &prefix = "datalogger_") {
+std::string getNextCsvFilename(int8_t offset = 0,
+                               const std::string &prefix = "datalogger_") {
   SdFile dir;
   dir.open("/", O_READ);
   SdFile entry;
@@ -128,23 +128,28 @@ std::string getNextCsvFilename(const std::string &prefix = "datalogger_") {
   }
 
   dir.close();
-  return prefix + std::to_string(maxNum + 1) + ".csv";
+  return prefix + std::to_string(maxNum + 1 + offset) + ".csv";
 }
 
 void abreArquivo() {
   if (dataFile.isOpen()) {
     dataFile.close();
   }
-  if (dataFile.open(getNextCsvFilename().c_str(),
+  if (dataFile.open(getNextCsvFilename(0).c_str(),
                     O_RDWR | O_CREAT | O_AT_END)) {
 #ifdef dev
     Serial.println("   -   Arquivo aberto. Salvando dados...");
 #endif
+  } else if (dataFile.open(getNextCsvFilename(1).c_str(),
+                           O_RDWR | O_CREAT | O_AT_END)) {
+    /* code */
   } else {
     Serial.begin(115200);
     for (uint16_t i = 0; i < 500; i++) {
       Serial.print("Erro ao abrir o arquivo: ");
-      Serial.println(getNextCsvFilename().c_str());
+      Serial.print(getNextCsvFilename(0).c_str());
+      Serial.print(" e ");
+      Serial.print(getNextCsvFilename(1).c_str());
     }
     esp_restart();
   }
@@ -364,8 +369,6 @@ void digital() {
   dataFrame.pulsosRodaEsquerda = (uint8_t)countEsq;
 }
 
-volatile bool reiniciar = false;
-
 void IRAM_ATTR fileServer() { reiniciar = true; }
 
 void readData() {
@@ -394,7 +397,6 @@ void setupDTL() {
   pinDef();
   readData();
 
-  
   init_componentes();
   configMPU();
   inicializaArquivo();

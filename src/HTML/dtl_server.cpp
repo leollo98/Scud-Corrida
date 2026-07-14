@@ -1,6 +1,7 @@
 #include "dtl_server.h"
 
 std::vector<LogFile> files;
+Preferences prefs_server;
 
 String formatBytes(uint64_t bytes) {
   if (bytes < 1024)
@@ -82,10 +83,9 @@ void updateFileList() {
 
   root.close();
 
-  std::sort(files.begin(), files.end(),
-    [](const LogFile &a, const LogFile &b) {
-      return a.number > b.number;
-    });
+  std::sort(files.begin(), files.end(), [](const LogFile &a, const LogFile &b) {
+    return a.number > b.number;
+  });
 }
 
 void writeTable(AsyncResponseStream *response) {
@@ -162,8 +162,81 @@ void handleDownload(AsyncWebServerRequest *request) {
   request->send(response);
 }
 
-void handleReboot(AsyncWebServerRequest *request){
-    esp_restart();
+void handleReboot(AsyncWebServerRequest *request) { esp_restart(); }
+
+void handleConfig(AsyncWebServerRequest *request) {
+
+  prefs_server.begin("config", true);
+  String ID = prefs_server.getString("ID", "");
+  prefs_server.end();
+
+  String html = HTML_CONFIG;
+  html.replace("%ID%", ID);
+
+  request->send(200, "text/html", html);
+}
+
+void handleConfigSave(AsyncWebServerRequest *request) {
+
+  if (!request->hasParam("ID", true)) {
+    request->send(400, "text/plain", "Campo Local não informado");
+    return;
+  }
+
+  String ID = request->getParam("ID", true)->value();
+
+  prefs_server.begin("config", false);
+  prefs_server.putString("ID", ID);
+  prefs_server.end();
+
+  request->redirect("/config");
+}
+
+void handleNotFound(AsyncWebServerRequest *request) { request->redirect("/"); }
+
+void handleUploadRequest(AsyncWebServerRequest *request) {
+  bool ok = !Update.hasError();
+
+  if (ok) {
+    request->send(204); // No Content
+
+    Serial.println("OTA concluído. Reiniciando...");
+
+    delay(500);
+    ESP.restart();
+  } else {
+    request->send(500, "text/plain", "Falha na atualização.");
+  }
+}
+
+void handleUpdate(AsyncWebServerRequest *request) {
+  request->send(200, "text/html", HTML_UPDATE);
+}
+
+void handleUpload(AsyncWebServerRequest *request, String filename, size_t index,
+                  uint8_t *data, size_t len, bool final) {
+
+  if (!index) {
+    Serial.printf("OTA: %s\n", filename.c_str());
+
+    if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
+      Update.printError(Serial);
+    }
+  }
+
+  if (len) {
+    if (Update.write(data, len) != len) {
+      Update.printError(Serial);
+    }
+  }
+
+  if (final) {
+    if (Update.end(true)) {
+      Serial.println("OTA concluído.");
+    } else {
+      Update.printError(Serial);
+    }
+  }
 }
 
 void setupWebServer(AsyncWebServer &server) {
@@ -175,6 +248,8 @@ void setupWebServer(AsyncWebServer &server) {
   Serial.println("SD Montado");
 
   server.on("/download", HTTP_GET, handleDownload);
+  server.on("/config", HTTP_GET, handleConfig);
+  server.on("/config", HTTP_POST, handleConfigSave);
 
   server.on("/", HTTP_GET, handleRoot);
   server.on("/generate_204", HTTP_GET, handleRoot);
@@ -183,7 +258,8 @@ void setupWebServer(AsyncWebServer &server) {
   server.on("/connecttest.txt", HTTP_GET, handleRoot);
   server.on("/ncsi.txt", HTTP_GET, handleRoot);
 
-  server.onNotFound(
-      [](AsyncWebServerRequest *request) { request->redirect("/"); });
+  server.onNotFound(handleNotFound);
   server.on("/reboot", HTTP_GET, handleReboot);
+  server.on("/update", HTTP_GET, handleUpdate);
+  server.on("/update", HTTP_POST, handleUploadRequest, handleUpload);
 }

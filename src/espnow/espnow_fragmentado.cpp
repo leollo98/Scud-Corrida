@@ -22,15 +22,15 @@ void readMacAddr() {
 
 #include "../dtl/dtl.h"
 
-Preferences pref;
+Preferences prefs_espnow;
 
 void processarComando(const std::string &comando) {
   Serial.printf("Comando recebido: %s\n", comando.c_str());
 
   if (comando == "CMD:READ_DATA") {
-    pref.begin("boot", false);
-    pref.putBool("read_data", true);
-    pref.end();
+    prefs_espnow.begin("boot", false);
+    prefs_espnow.putBool("read_data", true);
+    prefs_espnow.end();
 
     Serial.println("Flag gravada. Reiniciando...");
 

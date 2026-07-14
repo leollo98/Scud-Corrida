@@ -6,6 +6,8 @@
 #include <AsyncTCP.h>
 #include <WiFi.h>
 #include <algorithm>
+#include <Preferences.h>
+#include <Update.h>
 
 struct LogFile {
   uint32_t number;

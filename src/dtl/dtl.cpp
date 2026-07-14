@@ -86,12 +86,15 @@ void configMPU() {
 }
 
 std::string getNextCsvFilename(int8_t offset = 0,
-                               const std::string &prefix = "datalogger_") {
+                               const std::string &prefix = "datalogger-") {
   SdFile dir;
   dir.open("/", O_READ);
   SdFile entry;
   int maxNum = 0;
   char name[64];
+  prefs.begin("config", true);
+  std::string ID = prefs.getString("ID","0").c_str();
+  prefs.end();
 
   while (entry.openNext(&dir, O_READ)) {
     if (entry.isDir()) {
@@ -128,7 +131,7 @@ std::string getNextCsvFilename(int8_t offset = 0,
   }
 
   dir.close();
-  return prefix + std::to_string(maxNum + 1 + offset) + ".csv";
+  return prefix + ID + "_" + std::to_string(maxNum + 1 + offset) + ".csv";
 }
 
 void abreArquivo() {
@@ -339,8 +342,10 @@ void serverSetup() {
   WiFi.mode(WIFI_AP);
   uint8_t baseMac[6];
   esp_wifi_get_mac(WIFI_IF_STA, baseMac);
-  Serial.println(baseMac[5]);
-  String APname = "DataLogger - " + String(baseMac[5]);
+  prefs.begin("config", true);
+  String ID = prefs.getString("ID",String(baseMac[5]));
+  prefs.end();
+  String APname = "DataLogger - " + ID;
   Serial.println(APname);
   const char *AP_NAME = APname.c_str();
 
@@ -392,11 +397,18 @@ void readData() {
   prefs.end();
 }
 
+void Wifi_reset(){
+  WiFi.persistent(false);
+  WiFi.disconnect(true, true);
+  WiFi.mode(WIFI_OFF);
+  delay(100);
+}
+
 void setupDTL() {
   Serial.begin(115200);
   pinDef();
   readData();
-
+  Wifi_reset();
   init_componentes();
   configMPU();
   inicializaArquivo();

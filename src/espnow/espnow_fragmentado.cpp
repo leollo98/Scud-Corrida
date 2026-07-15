@@ -73,8 +73,8 @@ void enviarComando(const char *comando) {
   }
 }
 
-void onReceiveComando(const esp_now_recv_info_t *info,
-                      const uint8_t *incomingData, int len) {
+void onReceiveComando(const uint8_t *mac_addr,
+                      const uint8_t *incomingData, int32_t len) {
   if (len <= 0)
     return;
 

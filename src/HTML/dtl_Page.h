@@ -135,6 +135,105 @@ td:nth-child(4){
 <div class="info">
 )rawliteral";
 
+const char HTML_TABLE[] PROGMEM = R"rawliteral(
+</div>
+
+<table>
+    <thead>
+        <tr>
+            <th>#</th>
+            <th>Arquivo</th>
+            <th>Tamanho</th>
+            <th>Ação</th>
+        </tr>
+    </thead>
+
+    <tbody id="filesTable">
+        <tr>
+            <td colspan="4" style="text-align:center">
+                Carregando...
+            </td>
+        </tr>
+    </tbody>
+</table>
+
+<script>
+
+function formatBytes(bytes){
+
+    if(bytes < 1024)
+        return bytes + " B";
+
+    if(bytes < 1024 * 1024)
+        return (bytes / 1024).toFixed(1) + " KB";
+
+    return (bytes / 1024 / 1024).toFixed(1) + " MB";
+}
+
+function getFileNumber(name){
+
+    const m = name.match(/\d+/);
+
+    return m ? Number(m[0]) : 0;
+}
+
+async function loadFiles(){
+
+    try{
+
+        const response = await fetch("/files");
+
+        const files = await response.json();
+
+        files.sort((a,b)=>getFileNumber(b.name)-getFileNumber(a.name));
+
+        let html = "";
+
+        for(const file of files){
+
+            html += `
+            <tr>
+                <td>${getFileNumber(file.name)}</td>
+                <td>${file.name}</td>
+                <td>${formatBytes(file.size)}</td>
+                <td>
+                    <a class="botao"
+                       href="/download?file=${encodeURIComponent(file.name)}">
+                       Baixar
+                    </a>
+                </td>
+            </tr>`;
+        }
+
+        if(html === ""){
+            html = `
+            <tr>
+                <td colspan="4" style="text-align:center">
+                    Nenhum arquivo encontrado.
+                </td>
+            </tr>`;
+        }
+
+        document.getElementById("filesTable").innerHTML = html;
+
+    }
+    catch(e){
+
+        document.getElementById("filesTable").innerHTML = `
+        <tr>
+            <td colspan="4" style="text-align:center;color:red">
+                Erro ao carregar lista de arquivos.
+            </td>
+        </tr>`;
+    }
+}
+
+loadFiles();
+
+</script>
+
+)rawliteral";
+
 const char HTML_FOOTER[] PROGMEM = R"rawliteral(
 
 </table>
@@ -222,7 +321,7 @@ button:hover{
             type="text"
             id="ID"
             name="ID"
-            placeholder="Digite o local"
+            placeholder="%ID%"
             required>
 
         <button type="submit">Salvar</button>

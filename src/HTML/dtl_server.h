@@ -10,7 +10,6 @@
 #include <Update.h>
 
 struct LogFile {
-  uint32_t number;
   uint32_t size;
   char filename[32];
 };

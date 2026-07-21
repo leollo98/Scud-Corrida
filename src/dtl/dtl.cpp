@@ -93,7 +93,7 @@ std::string getNextCsvFilename(int8_t offset = 0,
   int maxNum = 0;
   char name[64];
   prefs.begin("config", true);
-  std::string ID = prefs.getString("ID","0").c_str();
+  std::string ID = prefs.getString("ID", "0").c_str();
   prefs.end();
 
   while (entry.openNext(&dir, O_READ)) {
@@ -118,13 +118,20 @@ std::string getNextCsvFilename(int8_t offset = 0,
       valid = false;
 
     if (valid) {
-      size_t start = prefix.size();
-      size_t end = filename.find_last_of('.');
-      std::string numPart = filename.substr(start, end - start);
+      size_t underscore = filename.find_last_of('_');
+      size_t dot = filename.find_last_of('.');
 
-      int num = atoi(numPart.c_str());
-      if (num > maxNum)
-        maxNum = num;
+      if (underscore != std::string::npos && dot != std::string::npos &&
+          underscore < dot) {
+
+        std::string numPart =
+            filename.substr(underscore + 1, dot - underscore - 1);
+
+        int num = atoi(numPart.c_str());
+
+        if (num > maxNum)
+          maxNum = num;
+      }
     }
 
     entry.close();
@@ -343,7 +350,7 @@ void serverSetup() {
   uint8_t baseMac[6];
   esp_wifi_get_mac(WIFI_IF_STA, baseMac);
   prefs.begin("config", true);
-  String ID = prefs.getString("ID",String(baseMac[5]));
+  String ID = prefs.getString("ID", String(baseMac[5]));
   prefs.end();
   String APname = "DataLogger - " + ID;
   Serial.println(APname);
@@ -397,7 +404,7 @@ void readData() {
   prefs.end();
 }
 
-void Wifi_reset(){
+void Wifi_reset() {
   WiFi.persistent(false);
   WiFi.disconnect(true, true);
   WiFi.mode(WIFI_OFF);

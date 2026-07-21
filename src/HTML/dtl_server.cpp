@@ -16,23 +16,6 @@ String formatBytes(uint64_t bytes) {
   return String(bytes / 1024.0 / 1024.0 / 1024.0, 2) + " GB";
 }
 
-uint32_t getFileNumber(const String &name) {
-
-  int pos = name.indexOf('_');
-
-  if (pos < 0)
-    return 0;
-
-  String num = name.substring(pos + 1);
-
-  int dot = num.indexOf('.');
-
-  if (dot >= 0)
-    num = num.substring(0, dot);
-
-  return num.toInt();
-}
-
 void updateFileList() {
 
   files.clear();
@@ -61,14 +44,12 @@ void updateFileList() {
     if (name.startsWith("/"))
       name.remove(0, 1);
 
-    if (name.startsWith("datalogger_") && name.endsWith(".csv")) {
+    if (name.startsWith("datalogger") && name.endsWith(".csv")) {
 
       LogFile log;
 
       strncpy(log.filename, name.c_str(), sizeof(log.filename));
       log.filename[sizeof(log.filename) - 1] = '\0';
-
-      log.number = getFileNumber(name);
       log.size = file.size();
 
       files.push_back(log);
@@ -82,25 +63,6 @@ void updateFileList() {
   }
 
   root.close();
-
-  std::sort(files.begin(), files.end(), [](const LogFile &a, const LogFile &b) {
-    return a.number > b.number;
-  });
-}
-
-void writeTable(AsyncResponseStream *response) {
-
-  for (const auto &file : files) {
-    String size = formatBytes(file.size);
-    response->printf(
-        "<tr>"
-        "<td>%lu</td>"
-        "<td>%s</td>"
-        "<td>%s</td>"
-        "<td><a class='botao' href='/download?file=%s'>Baixar</a></td>"
-        "</tr>",
-        file.number, file.filename, size.c_str(), file.filename);
-  }
 }
 
 void writeHeader(AsyncResponseStream *response) {
@@ -126,6 +88,39 @@ void writeHeader(AsyncResponseStream *response) {
 
 void writeFooter(AsyncResponseStream *response) {
   response->print(HTML_FOOTER);
+}
+
+void writeTable(AsyncResponseStream *response){
+  response->print(HTML_TABLE);
+}
+
+void writeHTML(AsyncResponseStream *response, String html) {
+  response->print(html);
+}
+
+void handleFiles(AsyncWebServerRequest *request) {
+  updateFileList();
+  AsyncResponseStream *response =
+      request->beginResponseStream("application/json");
+
+  response->print("[");
+
+  bool first = true;
+
+  for (const auto &file : files) {
+
+    if (!first)
+      response->print(",");
+
+    first = false;
+
+    response->printf("{\"name\":\"%s\",\"size\":%lu}", file.filename,
+                     file.size);
+  }
+
+  response->print("]");
+
+  request->send(response);
 }
 
 void handleRoot(AsyncWebServerRequest *request) {
@@ -173,7 +168,11 @@ void handleConfig(AsyncWebServerRequest *request) {
   String html = HTML_CONFIG;
   html.replace("%ID%", ID);
 
-  request->send(200, "text/html", html);
+  AsyncResponseStream *response = request->beginResponseStream("text/html");
+
+  writeHTML(response, html);
+
+  request->send(response);
 }
 
 void handleConfigSave(AsyncWebServerRequest *request) {
@@ -189,7 +188,7 @@ void handleConfigSave(AsyncWebServerRequest *request) {
   prefs_server.putString("ID", ID);
   prefs_server.end();
 
-  request->redirect("/config");
+  request->redirect("/");
 }
 
 void handleNotFound(AsyncWebServerRequest *request) { request->redirect("/"); }
@@ -201,6 +200,8 @@ void handleUploadRequest(AsyncWebServerRequest *request) {
     request->send(204); // No Content
 
     Serial.println("OTA concluído. Reiniciando...");
+    prefs_server.begin("boot", false);
+    prefs_server.putBool("read_data", true);
 
     delay(500);
     ESP.restart();
@@ -262,4 +263,5 @@ void setupWebServer(AsyncWebServer &server) {
   server.on("/reboot", HTTP_GET, handleReboot);
   server.on("/update", HTTP_GET, handleUpdate);
   server.on("/update", HTTP_POST, handleUploadRequest, handleUpload);
+  server.on("/files", HTTP_GET, handleFiles);
 }

@@ -123,6 +123,7 @@ void setupEspNowSend() {
   }
   addPear(mac_receptor);
   esp_now_register_recv_cb(onReceiveComando);
+  WiFi.softAPdisconnect(true);
 }
 
 #else

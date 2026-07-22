@@ -10,7 +10,6 @@
 #include <WiFi.h>
 #include <Wire.h>
 #include <esp_now.h>
-#include <WiFi.h>
 #include <ESPAsyncWebServer.h>
 #include <DNSServer.h>
 #include "../HTML/dtl_server.h"
@@ -18,20 +17,16 @@
 #include <global.h>
 
 
-#define chipSelectPin 5 // chip select (CS) do módulo do cartão SD
-#define pinPresFreio 34
-// #define dev
-#define pin
-//  1 for FAT16/FAT32, 2 for exFAT, 3 for FAT16/FAT32 and exFAT.
-#define SD_FAT_TYPE 1
+// Configuration constants
+constexpr uint8_t SD_CHIP_SELECT_PIN = 5;
+constexpr uint8_t PIN_BRAKE_PRESSURE = 34;
+constexpr uint8_t SD_FAT_TYPE = 1;
+constexpr uint16_t PAGE_SIZE = 1900; // 2048 com margem de segurança
+constexpr uint8_t NUM_PAGES = 3;
 
-// Contador de pulsos
-#define PCNT_UNIT_DIREITA PCNT_UNIT_0
-#define PCNT_UNIT_ESQUERDA PCNT_UNIT_1
-
-// Use a large percent of sector size for best performance (512B -> 2K -> 4k).
-#define pageSize 1900 // 2048 com margem de segurança
-#define numberOfPages 3
+// Pulse counter units
+#define PCNT_UNIT_RIGHT PCNT_UNIT_0
+#define PCNT_UNIT_LEFT PCNT_UNIT_1
 
 void setupDTL();
 void loopDTL();

@@ -37,10 +37,7 @@ uint32_t previousMillis = 0;
 
 void init_componentes() {
   if (!mpu.begin(0x69)) {
-#ifdef dev
     Serial.println("Falha ao inicializar o MPU6050.");
-    esp_restart();
-#endif
   }
   Serial.println("speed:");
 
@@ -155,9 +152,7 @@ void abreArquivo() {
   }
   if (dataFile.open(getNextCsvFilename(0).c_str(),
                     O_RDWR | O_CREAT | O_AT_END)) {
-#ifdef dev
     Serial.println("   -   Arquivo aberto. Salvando dados...");
-#endif
   } else if (dataFile.open(getNextCsvFilename(1).c_str(),
                            O_RDWR | O_CREAT | O_AT_END)) {
     /* code */
@@ -194,36 +189,10 @@ void MPU() {
   dataFrame.gyro[1] = gyroscope.gyro.y;
   dataFrame.gyro[2] = gyroscope.gyro.z;
   dataFrame.tempC = temperature.temperature;
-#ifdef dev
-  // Mostra valores de aceleração em m/s²
-  Serial.print("acl:");
-  Serial.print(dataFrame.accel[0]);
-  Serial.print(" ");
-  Serial.print(dataFrame.accel[1]);
-  Serial.print(" ");
-  Serial.print(dataFrame.accel[2]);
-  Serial.print(" ");
-  // Mostra valores do giroscópio em rad/s
-  Serial.print("g:");
-  Serial.print(dataFrame.gyro[0]);
-  Serial.print(" ");
-  Serial.print(dataFrame.gyro[1]);
-  Serial.print(" ");
-  Serial.print(dataFrame.gyro[2]);
-  Serial.print(" ");
-  // Mostra valor da temperatura da placa em degC
-  Serial.print("T:");
-  Serial.print(dataFrame.tempC);
-  Serial.print(" ");
-#endif
 }
 
 void analog() {
-  dataFrame.presFreio = analogRead(pinPresFreio);
-#ifdef dev
-  Serial.print("F:");
-  Serial.println(dataFrame.presFreio);
-#endif
+  dataFrame.presFreio = analogRead(PIN_BRAKE_PRESSURE);
 }
 
 void microSD() {
@@ -279,7 +248,7 @@ void core2(void *parameter) {
   const unsigned long intervaloEnvio = 100; // 100 ms entre envios
 
   while (true) {
-    if (csv.size() >= pageSize * numberOfPages) {
+    if (csv.size() >= PAGE_SIZE * NUM_PAGES) {
       portENTER_CRITICAL(&mux);
       digitalWrite(02, 1);
       dadosParaGravar = csv;
@@ -326,22 +295,22 @@ void setupPulseCounters() {
 
   pcnt_config_t pcnt_config_dir = pcnt_config;
   pcnt_config_dir.pulse_gpio_num = 35;
-  pcnt_config_dir.unit = PCNT_UNIT_DIREITA;
+  pcnt_config_dir.unit = PCNT_UNIT_RIGHT;
   Serial.println(pcnt_unit_config(&pcnt_config_dir));
 
   pcnt_config_t pcnt_config_esq = pcnt_config;
   pcnt_config_esq.pulse_gpio_num = 32;
-  pcnt_config_esq.unit = PCNT_UNIT_ESQUERDA;
+  pcnt_config_esq.unit = PCNT_UNIT_LEFT;
   pcnt_unit_config(&pcnt_config_esq);
 
   // Habilita contadores
-  pcnt_counter_pause(PCNT_UNIT_DIREITA);
-  pcnt_counter_clear(PCNT_UNIT_DIREITA);
-  pcnt_counter_resume(PCNT_UNIT_DIREITA);
+  pcnt_counter_pause(PCNT_UNIT_RIGHT);
+  pcnt_counter_clear(PCNT_UNIT_RIGHT);
+  pcnt_counter_resume(PCNT_UNIT_RIGHT);
 
-  pcnt_counter_pause(PCNT_UNIT_ESQUERDA);
-  pcnt_counter_clear(PCNT_UNIT_ESQUERDA);
-  pcnt_counter_resume(PCNT_UNIT_ESQUERDA);
+  pcnt_counter_pause(PCNT_UNIT_LEFT);
+  pcnt_counter_clear(PCNT_UNIT_LEFT);
+  pcnt_counter_resume(PCNT_UNIT_LEFT);
 }
 
 void pinDef() {
@@ -382,11 +351,11 @@ void digital() {
   int16_t countDir = 0;
   int16_t countEsq = 0;
 
-  pcnt_get_counter_value(PCNT_UNIT_DIREITA, &countDir);
-  pcnt_counter_clear(PCNT_UNIT_DIREITA);
+  pcnt_get_counter_value(PCNT_UNIT_RIGHT, &countDir);
+  pcnt_counter_clear(PCNT_UNIT_RIGHT);
 
-  pcnt_get_counter_value(PCNT_UNIT_ESQUERDA, &countEsq);
-  pcnt_counter_clear(PCNT_UNIT_ESQUERDA);
+  pcnt_get_counter_value(PCNT_UNIT_LEFT, &countEsq);
+  pcnt_counter_clear(PCNT_UNIT_LEFT);
 
   dataFrame.pulsosRodaDireita = (uint8_t)countDir;
   dataFrame.pulsosRodaEsquerda = (uint8_t)countEsq;

@@ -272,10 +272,6 @@ void handleUpload(AsyncWebServerRequest *request, String filename, size_t index,
 void setupWebServer(AsyncWebServer &server) {
   Serial.println("SD Montado");
 
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-      request->send(200, "text/plain", "ESP32 OK");
-  });
-
   server.on("/download", HTTP_GET, handleDownload);
   server.on("/config", HTTP_GET, handleConfig);
   server.on("/config", HTTP_POST, handleConfigSave);

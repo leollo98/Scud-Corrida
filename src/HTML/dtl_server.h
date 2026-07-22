@@ -2,12 +2,12 @@
 
 #include "dtl_Page.h"
 #include <ESPAsyncWebServer.h>
-#include <SD.h>
 #include <AsyncTCP.h>
 #include <WiFi.h>
 #include <algorithm>
 #include <Preferences.h>
 #include <Update.h>
+#include <global.h>
 
 struct LogFile {
   uint32_t size;

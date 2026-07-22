@@ -21,45 +21,41 @@ void updateFileList() {
   files.clear();
   files.reserve(50);
 
-  File root = SD.open("/");
-
-  if (!root) {
+  FsFile root;
+  if (!root.open("/")) {
     Serial.println("Erro abrindo raiz SD");
     return;
   }
 
   uint32_t timeout = millis();
 
-  File file = root.openNextFile();
+  FsFile file;
 
-  while (file) {
+  while (file.openNext(&root, O_RDONLY)) {
 
     if (millis() - timeout > 2000) {
       Serial.println("Timeout lendo SD");
       break;
     }
 
-    String name = file.name();
+    char name[64];
+    file.getName(name, sizeof(name));
 
-    if (name.startsWith("/"))
-      name.remove(0, 1);
-
-    if (name.startsWith("datalogger") && name.endsWith(".csv")) {
+    if (strncmp(name, "datalogger", 10) == 0 &&
+        strstr(name, ".csv") != nullptr) {
 
       LogFile log;
 
-      strncpy(log.filename, name.c_str(), sizeof(log.filename));
+      strncpy(log.filename, name, sizeof(log.filename));
       log.filename[sizeof(log.filename) - 1] = '\0';
+
       log.size = file.size();
 
       files.push_back(log);
     }
 
     file.close();
-
     delay(1);
-
-    file = root.openNextFile();
   }
 
   root.close();
@@ -67,13 +63,17 @@ void updateFileList() {
 
 void writeHeader(AsyncResponseStream *response) {
 
-  response->print(HTML_HEADER);
+  response->print(FPSTR(HTML_HEADER));
+
+  uint64_t totalBytes = (uint64_t)sd.clusterCount() * sd.bytesPerCluster();
+  uint64_t freeBytes = (uint64_t)sd.freeClusterCount() * sd.bytesPerCluster();
+  uint64_t usedBytes = totalBytes - freeBytes;
 
   response->printf("<b>Total de arquivos:</b> %u<br>"
                    "<b>Espaço utilizado:</b> %s<br>"
                    "<b>Espaço livre:</b> %s<br>",
-                   files.size(), formatBytes(SD.usedBytes()).c_str(),
-                   formatBytes(SD.totalBytes() - SD.usedBytes()).c_str());
+                   files.size(), formatBytes(usedBytes).c_str(),
+                   formatBytes(freeBytes).c_str());
 
   response->print("<br>");
 
@@ -87,12 +87,10 @@ void writeHeader(AsyncResponseStream *response) {
 }
 
 void writeFooter(AsyncResponseStream *response) {
-  response->print(HTML_FOOTER);
+  response->print(FPSTR(HTML_FOOTER));
 }
 
-void writeTable(AsyncResponseStream *response){
-  response->print(HTML_TABLE);
-}
+void writeTable(AsyncResponseStream *response) { response->print(HTML_TABLE); }
 
 void writeHTML(AsyncResponseStream *response, String html) {
   response->print(html);
@@ -135,27 +133,58 @@ void handleRoot(AsyncWebServerRequest *request) {
   request->send(response);
 }
 
-void handleDownload(AsyncWebServerRequest *request) {
-  if (!request->hasParam("file")) {
-    request->send(400, "text/plain", "Arquivo não informado");
-    return;
-  }
+void handleDownload(AsyncWebServerRequest *request)
+{
+    if (!request->hasParam("file")) {
+        request->send(400, "text/plain", "Arquivo não informado");
+        return;
+    }
 
-  String filename = request->getParam("file")->value();
+    String filename = request->getParam("file")->value();
+    String path = "/" + filename;
 
-  if (!SD.exists("/" + filename)) {
-    request->send(404, "text/plain", "Arquivo não encontrado");
-    return;
-  }
+    FsFile *file = new FsFile;
 
-  AsyncWebServerResponse *response =
-      request->beginResponse(SD, "/" + filename, "text/csv");
+    if (!file->open(path.c_str(), O_RDONLY)) {
+        delete file;
+        request->send(404, "text/plain", "Arquivo não encontrado");
+        return;
+    }
 
-  response->addHeader("Content-Disposition",
-                      "attachment; filename=\"" + filename + "\"");
+    uint64_t fileSize = file->size();
 
-  request->send(response);
+    AsyncWebServerResponse *response = new AsyncChunkedResponse(
+        "text/csv",
+        [file](uint8_t *buffer, size_t maxLen, size_t index) -> size_t {
+
+            if (!file->isOpen()) {
+                delete file;
+                return 0;
+            }
+
+            size_t len = file->read(buffer, maxLen);
+
+            if (len == 0) {
+                file->close();
+                delete file;
+                return 0;
+            }
+
+            return len;
+        });
+
+    response->addHeader(
+        "Content-Disposition",
+        "attachment; filename=\"" + filename + "\"");
+
+    response->addHeader(
+        "Content-Length",
+        String((uint32_t)fileSize));
+
+    request->send(response);
 }
+
+
 
 void handleReboot(AsyncWebServerRequest *request) { esp_restart(); }
 
@@ -241,12 +270,11 @@ void handleUpload(AsyncWebServerRequest *request, String filename, size_t index,
 }
 
 void setupWebServer(AsyncWebServer &server) {
-
-  if (!SD.begin(5)) {
-    Serial.println("Falha ao montar SD");
-    esp_restart();
-  }
   Serial.println("SD Montado");
+
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+      request->send(200, "text/plain", "ESP32 OK");
+  });
 
   server.on("/download", HTTP_GET, handleDownload);
   server.on("/config", HTTP_GET, handleConfig);

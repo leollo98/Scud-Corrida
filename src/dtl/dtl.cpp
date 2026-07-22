@@ -2,8 +2,9 @@
 #include "../espnow/espnow_fragmentado.h"
 
 Adafruit_MPU6050 mpu;
-SdFat sd;
-SdFile dataFile;
+
+SdFs sd;
+FsFile dataFile;
 TaskHandle_t Task1;
 Preferences prefs;
 
@@ -42,32 +43,39 @@ void init_componentes() {
 #endif
   }
   Serial.println("speed:");
+
   if (sd.begin(SdSpiConfig(SD_CS_PIN, DEDICATED_SPI, SD_SCK_MHZ(20)))) {
-    Serial.print("20");
+    Serial.println("20 MHz");
     return;
   }
+
   if (sd.begin(SdSpiConfig(SD_CS_PIN, DEDICATED_SPI, SD_SCK_MHZ(18)))) {
-    Serial.println("18");
+    Serial.println("18 MHz");
     return;
   }
+
   if (sd.begin(SdSpiConfig(SD_CS_PIN, DEDICATED_SPI, SD_SCK_MHZ(16)))) {
-    Serial.print("16");
+    Serial.println("16 MHz");
     return;
   }
+
   if (sd.begin(SdSpiConfig(SD_CS_PIN, DEDICATED_SPI, SD_SCK_MHZ(14)))) {
-    Serial.print("14");
+    Serial.println("14 MHz");
     return;
   }
+
   if (sd.begin(SdSpiConfig(SD_CS_PIN, DEDICATED_SPI, SD_SCK_MHZ(12)))) {
-    Serial.print("12");
+    Serial.println("12 MHz");
     return;
   }
+
   if (sd.begin(SdSpiConfig(SD_CS_PIN, DEDICATED_SPI, SD_SCK_MHZ(10)))) {
-    Serial.print("10");
+    Serial.println("10 MHz");
     return;
   }
+
   if (sd.begin(SdSpiConfig(SD_CS_PIN, DEDICATED_SPI, SD_SCK_MHZ(8)))) {
-    Serial.print("8");
+    Serial.println("8 MHz");
     return;
   }
   for (uint16_t i = 0; i < 500; i++) {
@@ -87,9 +95,9 @@ void configMPU() {
 
 std::string getNextCsvFilename(int8_t offset = 0,
                                const std::string &prefix = "datalogger-") {
-  SdFile dir;
+  FsFile dir;
+  FsFile entry;
   dir.open("/", O_READ);
-  SdFile entry;
   int maxNum = 0;
   char name[64];
   prefs.begin("config", true);
@@ -172,7 +180,7 @@ void inicializaArquivo() {
                  "z,giroscopio x,giroscopio y,giroscopio z,temperatura "
                  "mpu,pressao freio,pulsos roda direita,pulsos roda esquerda");
   dataFile.println();
-  dataFile.flush();
+  dataFile.sync();
 }
 
 void MPU() {
@@ -278,8 +286,8 @@ void core2(void *parameter) {
       csv = "";
       portEXIT_CRITICAL(&mux);
 
-      dataFile.print(dadosParaGravar.c_str());
-      dataFile.flush();
+      dataFile.write((uint8_t *)dadosParaGravar.data(), dadosParaGravar.size());
+      dataFile.sync();
       digitalWrite(02, 0);
       linha = 0;
       Serial.println("gravado");
@@ -299,7 +307,7 @@ void core2(void *parameter) {
       }
     }
 
-    if (dataFile.fileSize() >= 2E9) {
+    if (dataFile.size() >= 2E9) {
       abreArquivo();
     }
   }
@@ -363,6 +371,9 @@ void serverSetup() {
   setupWebServer(server);
 
   server.begin();
+
+  Serial.println("Servidor iniciado");
+
 }
 
 void ServerLoop() { dnsServer.processNextRequest(); }
@@ -414,9 +425,9 @@ void Wifi_reset() {
 void setupDTL() {
   Serial.begin(115200);
   pinDef();
+  init_componentes();
   readData();
   Wifi_reset();
-  init_componentes();
   configMPU();
   inicializaArquivo();
   setupEspNowSend();

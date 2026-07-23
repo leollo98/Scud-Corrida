@@ -87,7 +87,7 @@ void configMPU() {
   mpu.setGyroRange(
       MPU6050_RANGE_500_DEG); // Define a faixa de medição do giroscópio
   mpu.setFilterBandwidth(
-      MPU6050_BAND_260_HZ); // Define a largura de banda do filtro do sensor
+      MPU6050_BAND_21_HZ); // Define a largura de banda do filtro do sensor
 }
 
 std::string getNextCsvFilename(int8_t offset = 0,
@@ -191,9 +191,7 @@ void MPU() {
   dataFrame.tempC = temperature.temperature;
 }
 
-void analog() {
-  dataFrame.presFreio = analogRead(PIN_BRAKE_PRESSURE);
-}
+void analog() { dataFrame.presFreio = analogRead(PIN_BRAKE_PRESSURE); }
 
 void microSD() {
   portENTER_CRITICAL(&mux);
@@ -342,7 +340,6 @@ void serverSetup() {
   server.begin();
 
   Serial.println("Servidor iniciado");
-
 }
 
 void ServerLoop() { dnsServer.processNextRequest(); }
@@ -405,10 +402,14 @@ void setupDTL() {
 }
 
 void loopDTL() {
-  MPU();
-  analog();
-  digital();
-  microSD();
+  if (previousMillis - millis() >= COLECTION_TIME) {
+    previousMillis = millis();
+    MPU();
+    analog();
+    digital();
+    microSD();
+  }
+
   if (reiniciar) {
     reiniciar = false;
     ESP.restart();

@@ -55,7 +55,7 @@ void updateFileList() {
     }
 
     file.close();
-    delay(1);
+    yield();
   }
 
   root.close();
